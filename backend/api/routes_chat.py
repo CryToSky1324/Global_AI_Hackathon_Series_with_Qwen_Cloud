@@ -24,6 +24,10 @@ router = APIRouter()
 simulation_service = SimulationService()
 
 
+def _sse(event: dict) -> str:
+    return f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
+
+
 def _role_for_event(event_type: str) -> str:
     if event_type == "user_input":
         return "user"
@@ -40,21 +44,14 @@ def _role_for_event(event_type: str) -> str:
     return "system"
 
 
-def _persist_stream_event(
-    session_id: str | None,
-    event: dict,
-    title: str,
-) -> str | None:
+def _persist_stream_event(session_id: str | None, event: dict, title: str) -> str | None:
     persisted_event = _event_for_persistence(event)
     event_type = event.get("type", "")
     event_chat_id = event.get("chat_id")
     active_session_id = event_chat_id or session_id
 
     if event_chat_id:
-        chat_repository.create_session(
-            session_id=event_chat_id,
-            title=title,
-        )
+        chat_repository.create_session(session_id=event_chat_id, title=title)
 
     if not active_session_id:
         return None
@@ -113,6 +110,7 @@ def _persist_direct_exchange(
     )
     active_session_id = session["id"]
     timestamp = time.time()
+
     chat_repository.save_message(
         session_id=active_session_id,
         role="user",
@@ -127,6 +125,7 @@ def _persist_direct_exchange(
         created_at=timestamp,
         title=user_message,
     )
+
     chat_repository.save_message(
         session_id=active_session_id,
         role="assistant",
@@ -141,6 +140,7 @@ def _persist_direct_exchange(
         created_at=timestamp + 0.001,
         title=user_message,
     )
+
     return active_session_id
 
 
@@ -151,17 +151,12 @@ def health_check():
 
 @router.post("/chat", response_model=ChatResponse)
 def start_chat(request: ChatRequest):
-    """
-    Temporary test endpoint.
-    Real agent engine uses /api/chat/stream.
-    """
     try:
         return ChatResponse(
             chat_id=request.chat_id or "streaming-endpoint-required",
             status="completed",
             output="Use /api/chat/stream for the real agent engine.",
         )
-
     except Exception:
         logger.exception("Chat test endpoint failed")
         raise HTTPException(
@@ -172,80 +167,114 @@ def start_chat(request: ChatRequest):
 
 @router.post("/chat/stream")
 async def chat_stream(request: ChatRequest):
-    """
-    Real streaming endpoint for DynamicStreamingEngine.
-
-    New project:
-    {
-      "message": "Simulate an online car parts business",
-      "chat_id": null
-    }
-
-    Refinement:
-    {
-      "message": "Refine the pricing strategy",
-      "chat_id": "existing-chat-id"
-    }
-    """
-
     async def event_generator():
         active_chat_id = request.chat_id
-        intent_result = classify_intent(
-            request.message,
-            has_existing_chat=bool(request.chat_id),
-        )
-
-        if intent_result.intent in {CASUAL_CHAT, UNKNOWN}:
-            reply = (
-                casual_chat_reply(request.message)
-                if intent_result.intent == CASUAL_CHAT
-                else unknown_intent_reply()
-            )
-            assistant_event_type = (
-                "casual_chat" if intent_result.intent == CASUAL_CHAT else "clarification"
-            )
-            try:
-                active_chat_id = _persist_direct_exchange(
-                    active_chat_id,
-                    request.message,
-                    reply,
-                    assistant_event_type,
-                    intent_result.intent,
-                )
-            except Exception:
-                logger.exception("Failed to persist direct intent exchange")
-
-            if not request.chat_id and active_chat_id:
-                yield f"data: {json.dumps({'type': 'session_created', 'chat_id': active_chat_id, 'content': f'Created chat session {active_chat_id}'}, ensure_ascii=False)}\n\n"
-            yield f"data: {json.dumps({'type': 'user_input', 'agent': 'User', 'chat_id': active_chat_id, 'content': request.message, 'intent': intent_result.intent}, ensure_ascii=False)}\n\n"
-            yield f"data: {json.dumps({'type': assistant_event_type, 'agent': 'Genesis', 'chat_id': active_chat_id, 'content': reply, 'intent': intent_result.intent}, ensure_ascii=False)}\n\n"
-            return
-
-        if intent_result.intent not in {BUSINESS_IDEA, REFINEMENT}:
-            logger.info("Unhandled intent %s; falling back to full workflow", intent_result)
-
-        if active_chat_id:
-            try:
-                chat_repository.create_session(
-                    session_id=active_chat_id,
-                    title=request.message,
-                )
-                chat_repository.save_message(
-                    session_id=active_chat_id,
-                    role="user",
-                    agent_name="User",
-                    content=request.message,
-                    metadata_json={
-                        "type": "user_input",
-                        "agent": "User",
-                        "content": request.message,
-                    },
-                    title=request.message,
-                )
-            except Exception:
-                logger.exception("Failed to persist incoming user message")
 
         try:
+            yield _sse({
+                "type": "status",
+                "agent": "Genesis",
+                "chat_id": active_chat_id,
+                "content": "Stream started",
+            })
+
+            intent_result = classify_intent(
+                request.message,
+                has_existing_chat=bool(request.chat_id),
+            )
+
+            yield _sse({
+                "type": "status",
+                "agent": "Genesis",
+                "chat_id": active_chat_id,
+                "content": "Intent classified",
+                "intent": intent_result.intent,
+            })
+
+            if intent_result.intent in {CASUAL_CHAT, UNKNOWN}:
+                reply = (
+                    casual_chat_reply(request.message)
+                    if intent_result.intent == CASUAL_CHAT
+                    else unknown_intent_reply()
+                )
+
+                assistant_event_type = (
+                    "casual_chat"
+                    if intent_result.intent == CASUAL_CHAT
+                    else "clarification"
+                )
+
+                try:
+                    active_chat_id = _persist_direct_exchange(
+                        active_chat_id,
+                        request.message,
+                        reply,
+                        assistant_event_type,
+                        intent_result.intent,
+                    )
+                except Exception:
+                    logger.exception("Failed to persist direct intent exchange")
+
+                if not request.chat_id and active_chat_id:
+                    yield _sse({
+                        "type": "session_created",
+                        "chat_id": active_chat_id,
+                        "content": f"Created chat session {active_chat_id}",
+                    })
+
+                yield _sse({
+                    "type": "user_input",
+                    "agent": "User",
+                    "chat_id": active_chat_id,
+                    "content": request.message,
+                    "intent": intent_result.intent,
+                })
+
+                yield _sse({
+                    "type": assistant_event_type,
+                    "agent": "Genesis",
+                    "chat_id": active_chat_id,
+                    "content": reply,
+                    "intent": intent_result.intent,
+                })
+
+                return
+
+            if intent_result.intent not in {BUSINESS_IDEA, REFINEMENT}:
+                logger.info(
+                    "Unhandled intent %s; falling back to full workflow",
+                    intent_result,
+                )
+
+            if active_chat_id:
+                try:
+                    chat_repository.create_session(
+                        session_id=active_chat_id,
+                        title=request.message,
+                    )
+
+                    chat_repository.save_message(
+                        session_id=active_chat_id,
+                        role="user",
+                        agent_name="User",
+                        content=request.message,
+                        metadata_json={
+                            "type": "user_input",
+                            "agent": "User",
+                            "content": request.message,
+                        },
+                        title=request.message,
+                    )
+                except Exception:
+                    logger.exception("Failed to persist incoming user message")
+
+            yield _sse({
+                "type": "status",
+                "agent": "Genesis",
+                "chat_id": active_chat_id,
+                "content": "Starting agent simulation",
+            })
+
             async for event in simulation_service.run_stream(
                 message=request.message,
                 chat_id=request.chat_id,
@@ -258,20 +287,26 @@ async def chat_stream(request: ChatRequest):
                     )
                 except Exception:
                     logger.exception("Failed to persist stream event")
-                yield f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
+
+                yield _sse(event)
 
         except Exception as e:
             logger.exception("Streaming chat failed")
 
-            error_event = {
+            yield _sse({
                 "type": "error",
-                "content": "Streaming chat failed. Check backend logs.",
+                "agent": "Genesis",
+                "chat_id": active_chat_id,
+                "content": "Streaming chat failed.",
                 "detail": str(e),
-            }
-
-            yield f"data: {json.dumps(error_event, ensure_ascii=False)}\n\n"
+            })
 
     return StreamingResponse(
         event_generator(),
         media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
     )
