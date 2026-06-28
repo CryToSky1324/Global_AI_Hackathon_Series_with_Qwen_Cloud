@@ -1,19 +1,85 @@
-# Environment
+# =========================
+# Environment Variables
+# =========================
 .env
+.env.*
 *.env
 
+# =========================
 # Python
-.venv/
+# =========================
 __pycache__/
-*.pyc
+*.py[cod]
+*$py.class
+*.pyo
+*.pyd
 
-# Node
+.venv/
+venv/
+ENV/
+env/
+
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Local vendored dependencies (DO NOT COMMIT)
+.python_deps/
+.sqlalchemy_deps/
+backend/.python_deps/
+backend/.sqlalchemy_deps/
+
+# =========================
+# Node / Vite
+# =========================
 node_modules/
 dist/
 .next/
+.vite/
 
+# =========================
 # Logs
+# =========================
 *.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
 
-# Windows
+# =========================
+# IDE
+# =========================
+.vscode/
+.idea/
+
+# =========================
+# Operating System
+# =========================
 desktop.ini
+.DS_Store
+Thumbs.db
+
+# =========================
+# Local Runtime Data
+# =========================
+run_artifacts/
+backend/run_artifacts/
+data/
+backend/data/
+
+# SQLite databases
+*.db
+*.sqlite
+*.sqlite3
+
+# =========================
+# Vercel
+# =========================
+.vercel/
+
+# =========================
+# Build Artifacts
+# =========================
+build/
+out/
