@@ -2,6 +2,8 @@ import React, { useEffect, useMemo, useState } from 'react';
 import {
   AlertCircle,
   ArrowLeft,
+  BadgeCheck,
+  BarChart3,
   CheckCircle2,
   Clipboard,
   DollarSign,
@@ -10,26 +12,36 @@ import {
   Loader2,
   MousePointer2,
   Rocket,
+  Route,
+  Scale,
+  SearchCheck,
   ShieldCheck,
   Sparkles,
+  Target,
   Wand2,
 } from 'lucide-react';
 import { API_CONNECTION_LABEL, getSession } from '../services/api';
 import {
   BLUEPRINT_SECTIONS,
   countGeneratedSections,
+  getSection,
   getSectionContent,
 } from '../utils/blueprintSections';
 import { Aurora, Beams } from '../components/reactbits/VisualEffects';
 
 const SECTION_ICONS = {
-  mvp_scope: Layers,
-  business_plan: Wand2,
+  executive_summary: BadgeCheck,
+  problem_statement: Target,
+  market_analysis: BarChart3,
+  market_validation: SearchCheck,
+  product_mvp: Layers,
   technical_architecture: FileText,
-  ux_strategy: MousePointer2,
-  go_to_market: Rocket,
-  risk_assessment: ShieldCheck,
   financial_plan: DollarSign,
+  marketing_strategy: Rocket,
+  legal_compliance: Scale,
+  risk_assessment: ShieldCheck,
+  implementation_roadmap: Route,
+  final_recommendation: Wand2,
 };
 
 export default function BlueprintPage({ chatId }) {
@@ -71,8 +83,18 @@ export default function BlueprintPage({ chatId }) {
   const copyBlueprint = async () => {
     if (!sessionDetails) return;
     const text = BLUEPRINT_SECTIONS.map((section) => {
-      const content = getSectionContent(sessionDetails, section.id) || 'Not generated yet.';
-      return `# ${section.label}\n${content}`;
+      const value = getSection(sessionDetails, section.id);
+      const metadata = value?.metadata || {};
+      const content = value?.content || 'Not generated yet.';
+      return [
+        `# ${section.label}`,
+        `Validated By: ${metadata.validated_by || value?.owner || section.owner}`,
+        `Launch Confidence: ${metadata.launch_confidence ?? 0}%`,
+        `Research Coverage: ${metadata.research_coverage || '0 / 0 Objectives'}`,
+        `Consensus Level: ${metadata.consensus_level || 'Weak'}`,
+        '',
+        content,
+      ].join('\n');
     }).join('\n\n');
 
     try {
@@ -168,15 +190,43 @@ export default function BlueprintPage({ chatId }) {
 
             {BLUEPRINT_SECTIONS.map((section) => {
               const Icon = SECTION_ICONS[section.id] || FileText;
-              const content = getSectionContent(sessionDetails, section.id);
+              const value = getSection(sessionDetails, section.id);
+              const content = value?.content || '';
+              const metadata = value?.metadata || {};
+              const confidence = Number(metadata.launch_confidence || 0);
               return (
                 <section id={section.id} key={section.id} className="blueprint-section-card">
                   <div className="blueprint-section-heading">
-                    <Icon size={19} />
-                    <h2>{section.label}</h2>
+                    <div className="blueprint-section-title">
+                      <span className="blueprint-section-icon" aria-hidden="true">
+                        <Icon size={19} />
+                      </span>
+                      <div>
+                        <p>{value?.owner || section.owner}</p>
+                        <h2>{section.label}</h2>
+                      </div>
+                    </div>
+                    <div className="confidence-meter" aria-label={`Launch confidence ${confidence}%`}>
+                      <strong>{confidence}%</strong>
+                      <span>Launch Confidence</span>
+                    </div>
+                  </div>
+                  <div className="blueprint-metadata-row" aria-label={`${section.label} validation metadata`}>
+                    <span>
+                      <BadgeCheck size={14} />
+                      Validated By {metadata.validated_by || value?.owner || section.owner}
+                    </span>
+                    <span>
+                      <SearchCheck size={14} />
+                      {metadata.research_coverage || '0 / 0 Objectives'}
+                    </span>
+                    <span className={`consensus-${String(metadata.consensus_level || 'Weak').toLowerCase()}`}>
+                      <BarChart3 size={14} />
+                      Consensus {metadata.consensus_level || 'Weak'}
+                    </span>
                   </div>
                   {content ? (
-                    <div className="blueprint-section-content">{content}</div>
+                    <BlueprintSectionBody sectionValue={value} />
                   ) : (
                     <p className="blueprint-empty">Not generated yet.</p>
                   )}
@@ -193,6 +243,43 @@ export default function BlueprintPage({ chatId }) {
           <span>{copyState}</span>
         </div>
       )}
+    </div>
+  );
+}
+
+function BlueprintSectionBody({ sectionValue }) {
+  const body = sectionValue?.body || {};
+  const hasStructuredBody = Object.keys(body).length > 0;
+  if (!hasStructuredBody) {
+    return <div className="blueprint-section-content">{sectionValue?.content}</div>;
+  }
+
+  const rows = [
+    ['Objective', body.objective],
+    ['Key Findings', body.key_findings],
+    ['Supporting Evidence', body.supporting_evidence],
+    ['Risks', body.risks],
+    ['Mitigation Strategy', body.mitigation_strategy],
+    ['Recommendation', body.recommendation],
+    ['Confidence Explanation', body.confidence_explanation],
+  ];
+
+  return (
+    <div className="blueprint-section-content structured">
+      {rows.map(([label, value]) => (
+        <section key={label} className="blueprint-body-block">
+          <h3>{label}</h3>
+          {Array.isArray(value) ? (
+            <ul>
+              {value.map((item, index) => (
+                <li key={`${label}-${index}`}>{item}</li>
+              ))}
+            </ul>
+          ) : (
+            <p>{value || 'Not specified.'}</p>
+          )}
+        </section>
+      ))}
     </div>
   );
 }

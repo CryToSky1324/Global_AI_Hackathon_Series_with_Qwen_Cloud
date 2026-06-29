@@ -35,6 +35,8 @@ const HIDDEN_EVENT_TYPES = new Set([
   'session_loaded',
   'impact_assessment',
   'agent_selection',
+  'round_started',
+  'debate_needs_more',
 ]);
 
 function isUserFacingEvent(event) {
@@ -42,6 +44,7 @@ function isUserFacingEvent(event) {
   const content = typeof event.content === 'string' ? event.content.trim() : '';
   if (HIDDEN_EVENT_TYPES.has(event.type)) return false;
   if (/^Updated section\s+/i.test(content)) return false;
+  if (/started (debate|round)|is preparing| joined$/i.test(content)) return false;
   if (event.role === 'system' || event.agent === 'System' || event.name === 'system') return false;
   if (event.type === 'info' && /^(Starting|Product Manager defining|Genesis is convening)/i.test(content)) {
     return false;
@@ -226,6 +229,16 @@ export default function Dashboard({ initialChatId = null }) {
           applyBlueprintSectionEvent(event);
         }
 
+        if (event.type === 'agent_typing' || event.type === 'agent_delta') {
+          setEvents((prev) => upsertStreamingAgentEvent(prev, event));
+          return;
+        }
+
+        if (event.type === 'agent_response') {
+          setEvents((prev) => finalizeStreamingAgentEvent(prev, event));
+          return;
+        }
+
         setEvents((prev) => [...prev, event]);
 
         if (event.type === 'session_saved' && event.chat_id) {
@@ -283,6 +296,38 @@ export default function Dashboard({ initialChatId = null }) {
         sections,
       };
     });
+  };
+
+  const streamingKey = (event) => `${event.agent || 'Agent'}:${event.round || 0}:${event.phase || 'debate'}`;
+
+  const upsertStreamingAgentEvent = (prev, event) => {
+    const key = streamingKey(event);
+    const nextEvent = {
+      ...event,
+      id: event.id || `stream:${key}`,
+      type: event.type === 'agent_typing' ? 'agent_typing' : 'agent_delta',
+      content: event.content || '',
+      streamingKey: key,
+    };
+    const index = prev.findIndex((item) => item.streamingKey === key);
+    if (index < 0) return [...prev, nextEvent];
+    const next = [...prev];
+    next[index] = { ...next[index], ...nextEvent };
+    return next;
+  };
+
+  const finalizeStreamingAgentEvent = (prev, event) => {
+    const key = streamingKey(event);
+    const finalEvent = {
+      ...event,
+      id: event.id || `final:${key}`,
+      streamingKey: key,
+    };
+    const index = prev.findIndex((item) => item.streamingKey === key);
+    if (index < 0) return [...prev, finalEvent];
+    const next = [...prev];
+    next[index] = finalEvent;
+    return next;
   };
 
   const handleReset = () => {

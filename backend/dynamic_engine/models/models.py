@@ -6,26 +6,92 @@ import time
 
 
 CANONICAL_SECTIONS = (
-    "mvp_scope",
-    "business_plan",
+    "executive_summary",
+    "problem_statement",
+    "market_analysis",
+    "market_validation",
+    "product_mvp",
     "technical_architecture",
-    "ux_strategy",
-    "go_to_market",
-    "risk_assessment",
     "financial_plan",
+    "marketing_strategy",
+    "legal_compliance",
+    "risk_assessment",
+    "implementation_roadmap",
+    "final_recommendation",
 )
 
 
+BLUEPRINT_TEMPLATE_VERSION = "executive-blueprint-v2"
+
+
+BLUEPRINT_SECTION_DEFINITIONS = {
+    "executive_summary": {
+        "title": "Executive Summary",
+        "owner": "Root Coordinator",
+        "legacy_aliases": [],
+    },
+    "problem_statement": {
+        "title": "Problem Statement",
+        "owner": "UX Researcher",
+        "legacy_aliases": ["ux_strategy"],
+    },
+    "market_analysis": {
+        "title": "Market Analysis",
+        "owner": "Business Analyst",
+        "legacy_aliases": ["business_plan"],
+    },
+    "market_validation": {
+        "title": "Market Validation",
+        "owner": "Research Agent",
+        "legacy_aliases": [],
+    },
+    "product_mvp": {
+        "title": "Product & MVP",
+        "owner": "Product Manager",
+        "legacy_aliases": ["mvp_scope", "action_items"],
+    },
+    "technical_architecture": {
+        "title": "Technical Architecture",
+        "owner": "Technical Lead",
+        "legacy_aliases": [],
+    },
+    "financial_plan": {
+        "title": "Financial Plan",
+        "owner": "Finance Analyst",
+        "legacy_aliases": ["financial_projection", "finance", "financial", "financials"],
+    },
+    "marketing_strategy": {
+        "title": "Marketing Strategy",
+        "owner": "Marketing Strategist",
+        "legacy_aliases": ["go_to_market", "go_to_market_strategy", "gtm"],
+    },
+    "legal_compliance": {
+        "title": "Legal & Compliance",
+        "owner": "Legal Advisor",
+        "legacy_aliases": [],
+    },
+    "risk_assessment": {
+        "title": "Risk Assessment",
+        "owner": "Risk & Compliance",
+        "legacy_aliases": ["risk", "risks"],
+    },
+    "implementation_roadmap": {
+        "title": "Implementation Roadmap",
+        "owner": "Product Manager",
+        "legacy_aliases": [],
+    },
+    "final_recommendation": {
+        "title": "Final Recommendation",
+        "owner": "Root Coordinator",
+        "legacy_aliases": [],
+    },
+}
+
+
 SECTION_ALIASES = {
-    "marketing_strategy": "go_to_market",
-    "financial_projection": "financial_plan",
-    "finance": "financial_plan",
-    "financial": "financial_plan",
-    "financials": "financial_plan",
-    "go_to_market_strategy": "go_to_market",
-    "gtm": "go_to_market",
-    "risk": "risk_assessment",
-    "risks": "risk_assessment",
+    alias: section
+    for section, definition in BLUEPRINT_SECTION_DEFINITIONS.items()
+    for alias in definition.get("legacy_aliases", [])
 }
 
 
@@ -117,6 +183,17 @@ class ChatSession:
     change_history: list = field(default_factory=list)
 
     def ensure_sections(self):
+        for old_key, new_key in SECTION_ALIASES.items():
+            if (
+                old_key in self.sections
+                and (
+                    new_key not in self.sections
+                    or not self.sections.get(new_key)
+                )
+            ):
+                self.sections[new_key] = self.sections[old_key]
+            if old_key in self.sections and old_key not in CANONICAL_SECTIONS:
+                self.sections.pop(old_key, None)
         for section in CANONICAL_SECTIONS:
             self.sections.setdefault(section, {})
 

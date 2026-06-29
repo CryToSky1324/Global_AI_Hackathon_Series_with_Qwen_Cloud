@@ -110,6 +110,7 @@ class DynamicStreamingEngine(
         self.structured_research: Dict[str, Any] = {}
         self.research_findings: List[Dict] = []
         self.debate_round_history: List[Dict] = []
+        self.generated_blueprint_sections: Dict[str, Dict] = {}
         self.selected_standby_specialists: List[Dict[str, str]] = []
         self.active_debate_agent_roles: List[str] = []
         self.run_artifact_dir = Path(__file__).resolve().parents[1] / "run_artifacts"
@@ -243,10 +244,21 @@ class DynamicStreamingEngine(
         self.current_session = session
         self.current_task = task
         self.run_artifact_dir = self.session_store.session_dir(session.chat_id)
-        self.research_artifact_payload = {}
+        self.research_artifact_payload = (
+            dict(session.research_brief)
+            if isinstance(session.research_brief, dict)
+            else {}
+        )
         self.research_artifact_path = ""
         self.agent_briefs_artifact_path = ""
+        if isinstance(session.research_brief, dict):
+            self.structured_research = session.research_brief.get("research", {}) or {}
+            self.research_brief = session.research_brief.get("research_brief", "")
+        else:
+            self.structured_research = {}
+            self.research_brief = str(session.research_brief or "")
         self.debate_round_history = []
+        self.generated_blueprint_sections = {}
         self.selected_standby_specialists = []
         self.active_debate_agent_roles = []
         self.memory_store.clear_agent_memories()
@@ -327,6 +339,15 @@ class DynamicStreamingEngine(
             " ".join(f"{item['agent']}: {item['content']}" for item in debate_responses),
             3000,
         )
+        affected_blueprint_sections = [
+            section
+            for section in self._normalize_sections(impact.affected_sections)
+            if section in CANONICAL_SECTIONS
+        ]
+        if affected_blueprint_sections:
+            self.generated_blueprint_sections = await self._generate_blueprint_sections(
+                section_keys=affected_blueprint_sections,
+            )
         changed_sections = []
         updates = self._build_refinement_section_updates(session, task, impact, summary_text)
         for section, after in updates.items():
@@ -385,6 +406,7 @@ class DynamicStreamingEngine(
         self.structured_research = {}
         self.research_findings = []
         self.debate_round_history = []
+        self.generated_blueprint_sections = {}
         self.memory_store.clear_agent_memories()
         self.memory_store.add_message(user_msg)
         yield {

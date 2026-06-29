@@ -4,7 +4,14 @@ import logging
 import re
 from typing import AsyncGenerator, Dict, List
 
-from ..models import ChatSession, ImpactAssessment, Message
+from ..models import (
+    BLUEPRINT_SECTION_DEFINITIONS,
+    BLUEPRINT_TEMPLATE_VERSION,
+    CANONICAL_SECTIONS,
+    ChatSession,
+    ImpactAssessment,
+    Message,
+)
 
 
 logger = logging.getLogger(__name__)
@@ -46,6 +53,25 @@ class DebateMixin:
         "Phase 2: Improvements",
         "Phase 3: Future Expansion",
     )
+    BLUEPRINT_REQUIRED_BODY_FIELDS = (
+        "objective",
+        "key_findings",
+        "supporting_evidence",
+        "risks",
+        "mitigation_strategy",
+        "recommendation",
+        "launch_confidence",
+        "confidence_explanation",
+        "validated_by",
+    )
+    BLUEPRINT_BANNED_PATTERNS = (
+        r"\bI agree\b",
+        r"\bI disagree\b",
+        r"\bthe\s+\w+(?:\s+\w+)?\s+agent\s+said\b",
+        r"\bas\s+\w+(?:\s+\w+)?\s+mentioned\b",
+        r"\bresearch summary\b",
+        r"(?m)^\s*\[[^\]\n]{1,60}\]\s*:",
+    )
 
     def _render_prompt(self, prompt_id: str, **values) -> str:
         renderer = getattr(self, "prompt_renderer", None)
@@ -82,6 +108,13 @@ class DebateMixin:
         prior_responses = []
         current_round = []
         for agent_name, agent in selected:
+            yield {
+                "type": "agent_typing",
+                "agent": agent_name,
+                "round": 1,
+                "phase": "debate",
+                "content": "",
+            }
             event = await self._run_debate_step(
                 agent,
                 agent_name,
@@ -90,7 +123,8 @@ class DebateMixin:
                 debate_stage="proposal",
             )
             event["round"] = 1
-            yield event
+            for stream_event in self._synthetic_debate_stream_events(event):
+                yield stream_event
             if event.get("type") == "agent_response":
                 record = {
                     "agent": agent_name,
@@ -119,7 +153,8 @@ class DebateMixin:
             debate_stage="resolution",
         )
         pm_event["round"] = 2
-        yield pm_event
+        for stream_event in self._synthetic_debate_stream_events(pm_event):
+            yield stream_event
         if pm_event.get("type") == "agent_response":
             self.debate_round_history.append(
                 {
@@ -275,6 +310,13 @@ class DebateMixin:
         prior_responses = self._prior_debate_context_for_round(round_num)
         logger.info("debate execution mode: live_sequential")
         for agent_name, agent in selected_agents:
+            yield {
+                "type": "agent_typing",
+                "agent": agent_name,
+                "round": round_num,
+                "phase": "debate",
+                "content": "",
+            }
             event = await self._run_debate_step(
                 agent,
                 agent_name,
@@ -283,7 +325,8 @@ class DebateMixin:
                 debate_stage=debate_stage,
             )
             event["round"] = round_num
-            yield event
+            for stream_event in self._synthetic_debate_stream_events(event):
+                yield stream_event
             if event.get("type") == "agent_response":
                 prior_responses.append(
                     {
@@ -342,6 +385,26 @@ class DebateMixin:
                 "content": self._compress_text(str(event), 600),
             }
         return event
+
+    def _synthetic_debate_stream_events(self, event: Dict) -> List[Dict]:
+        if event.get("type") != "agent_response":
+            return [event]
+        content = str(event.get("content") or "")
+        words = content.split()
+        streamed = []
+        cumulative = []
+        for index, word in enumerate(words):
+            cumulative.append(word)
+            streamed.append(
+                {
+                    **event,
+                    "type": "agent_delta",
+                    "delta": word + (" " if index < len(words) - 1 else ""),
+                    "content": " ".join(cumulative),
+                }
+            )
+        streamed.append(event)
+        return streamed
 
     def _is_rate_limit_event(self, event: Dict) -> bool:
         text = str(event.get("content", "")).lower()
@@ -722,6 +785,457 @@ class DebateMixin:
             deduped.append(item)
         return deduped
 
+    def _build_blueprint_context(self, report_context: Dict | None = None) -> Dict:
+        report_context = report_context or self._build_report_context()
+        research = report_context.get("research_brief") or {}
+        objectives = research.get("objectives", []) if isinstance(research, dict) else []
+        completed = 0
+        for objective in objectives or []:
+            status = str(objective.get("status") or "").lower()
+            if status in {"complete", "completed", "covered", "done"}:
+                completed += 1
+        total = len(objectives or [])
+        debate_summary = self._agent_debate_summary_replacements(report_context)
+        consensus_text = "\n\n".join(
+            str(item.get("consensus") or "").strip()
+            for item in report_context.get("debate_rounds", []) or []
+            if item.get("consensus")
+        )
+        return {
+            **report_context,
+            "blueprint_sections": BLUEPRINT_SECTION_DEFINITIONS,
+            "research_coverage": {
+                "completed": completed,
+                "total": total,
+                "label": f"{completed} / {total} Objectives",
+            },
+            "agreements": debate_summary.get("Key Agreements", ""),
+            "disagreements": debate_summary.get("Key Disagreements", ""),
+            "final_resolution": debate_summary.get("Final Resolution", ""),
+            "consensus_level": self._consensus_level(consensus_text, completed, total),
+        }
+
+    def _consensus_level(self, consensus_text: str, completed: int, total: int) -> str:
+        text = str(consensus_text or "").lower()
+        has_disagreement = bool(
+            re.search(r"\b(disagreement|tradeoff|risk|concern|challenge)\b", text)
+        )
+        coverage_ratio = (completed / total) if total else 0
+        if coverage_ratio >= 0.75 and not has_disagreement:
+            return "Strong"
+        if coverage_ratio >= 0.4 or text.strip():
+            return "Moderate"
+        return "Weak"
+
+    async def _generate_blueprint_sections(
+        self,
+        report_context: Dict | None = None,
+        section_keys: List[str] | None = None,
+    ) -> Dict[str, Dict]:
+        blueprint_context = self._build_blueprint_context(report_context)
+        selected_sections = [
+            section for section in (section_keys or list(CANONICAL_SECTIONS))
+            if section in BLUEPRINT_SECTION_DEFINITIONS
+        ]
+        semaphore = asyncio.Semaphore(3)
+
+        async def run_section(section: str):
+            async with semaphore:
+                return section, await self._generate_blueprint_section(
+                    section,
+                    blueprint_context,
+                )
+
+        results = await asyncio.gather(
+            *(run_section(section) for section in selected_sections),
+            return_exceptions=True,
+        )
+        sections = {}
+        for result in results:
+            if isinstance(result, Exception):
+                logger.warning("Blueprint section generation failed: %s", result)
+                continue
+            section, payload = result
+            sections[section] = payload
+
+        for section in selected_sections:
+            if section not in sections:
+                sections[section] = self._fallback_blueprint_section(
+                    section,
+                    blueprint_context,
+                    reason="Section writer unavailable.",
+                )
+        return sections
+
+    async def _generate_blueprint_section(
+        self,
+        section: str,
+        blueprint_context: Dict,
+    ) -> Dict:
+        definition = BLUEPRINT_SECTION_DEFINITIONS[section]
+        owner = definition["owner"]
+        agent = self._blueprint_owner_agent(owner)
+        if agent is None:
+            return self._fallback_blueprint_section(
+                section,
+                blueprint_context,
+                reason=f"{owner} is not available in this run.",
+            )
+
+        prompt = self._render_prompt(
+            "blueprint.section_writer",
+            section_key=section,
+            section_title=definition["title"],
+            owner=owner,
+            blueprint_context=self._compress_text(
+                json.dumps(blueprint_context, ensure_ascii=False),
+                50000,
+            ),
+        )
+        if not prompt:
+            return self._fallback_blueprint_section(
+                section,
+                blueprint_context,
+                reason="Blueprint section prompt is not configured.",
+            )
+
+        try:
+            agent.reset()
+            response = await asyncio.wait_for(agent.astep(prompt), timeout=75.0)
+            raw = response.msgs[0].content if response and response.msgs else ""
+            parsed = self._extract_json_object(raw)
+            return self._normalize_blueprint_section(section, parsed, blueprint_context)
+        except Exception as error:
+            logger.warning(
+                "Blueprint owner %s failed for %s: %s",
+                owner,
+                section,
+                self._error_text(error),
+            )
+            return self._fallback_blueprint_section(
+                section,
+                blueprint_context,
+                reason=f"{owner} synthesis failed.",
+            )
+
+    def _blueprint_owner_agent(self, owner: str):
+        if owner == "Research Agent":
+            return None
+        agents = getattr(self, "agents", {}) or {}
+        if owner in agents:
+            return agents[owner]
+        for agent_id, config in getattr(self, "standby_agent_configs", {}).items():
+            if config.get("role") == owner:
+                return self._get_or_build_standby_agent(agent_id)
+        return None
+
+    def _normalize_blueprint_section(
+        self,
+        section: str,
+        parsed,
+        blueprint_context: Dict,
+    ) -> Dict:
+        if not isinstance(parsed, dict):
+            return self._fallback_blueprint_section(
+                section,
+                blueprint_context,
+                reason="Section writer returned non-JSON output.",
+            )
+
+        definition = BLUEPRINT_SECTION_DEFINITIONS[section]
+        owner = definition["owner"]
+        body = parsed.get("body") if isinstance(parsed.get("body"), dict) else parsed
+        normalized_body = {}
+        fallback = self._default_blueprint_body(section, blueprint_context)
+        for field in self.BLUEPRINT_REQUIRED_BODY_FIELDS:
+            value = body.get(field, fallback.get(field))
+            if field == "launch_confidence":
+                normalized_body[field] = self._coerce_launch_confidence(value)
+            elif field == "validated_by":
+                normalized_body[field] = owner
+            elif field in {"key_findings", "supporting_evidence", "risks"}:
+                normalized_body[field] = self._sanitize_blueprint_list(value)
+            else:
+                normalized_body[field] = self._sanitize_blueprint_text(value)
+
+        content = self._format_blueprint_content(definition["title"], normalized_body)
+        if self._looks_like_raw_chat_log(content) or self._contains_blueprint_banned_text(content):
+            return self._fallback_blueprint_section(
+                section,
+                blueprint_context,
+                reason="Section writer output looked like debate transcript.",
+            )
+
+        metadata = parsed.get("metadata") if isinstance(parsed.get("metadata"), dict) else {}
+        coverage = blueprint_context.get("research_coverage", {})
+        return {
+            "title": definition["title"],
+            "owner": owner,
+            "content": content,
+            "body": normalized_body,
+            "metadata": {
+                "validated_by": owner,
+                "launch_confidence": normalized_body["launch_confidence"],
+                "research_coverage": coverage.get("label", "0 / 0 Objectives"),
+                "consensus_level": self._normalize_consensus_level(
+                    metadata.get("consensus_level")
+                    or blueprint_context.get("consensus_level")
+                ),
+            },
+            "status": "draft",
+            "source": "blueprint_section_writer",
+            "template_version": BLUEPRINT_TEMPLATE_VERSION,
+        }
+
+    def _fallback_blueprint_section(
+        self,
+        section: str,
+        blueprint_context: Dict,
+        reason: str = "",
+    ) -> Dict:
+        definition = BLUEPRINT_SECTION_DEFINITIONS[section]
+        body = self._default_blueprint_body(section, blueprint_context)
+        coverage = blueprint_context.get("research_coverage", {})
+        content = self._format_blueprint_content(definition["title"], body)
+        return {
+            "title": definition["title"],
+            "owner": definition["owner"],
+            "content": content,
+            "body": body,
+            "metadata": {
+                "validated_by": definition["owner"],
+                "launch_confidence": body["launch_confidence"],
+                "research_coverage": coverage.get("label", "0 / 0 Objectives"),
+                "consensus_level": self._normalize_consensus_level(
+                    blueprint_context.get("consensus_level")
+                ),
+            },
+            "status": "draft",
+            "source": "deterministic_blueprint_fallback",
+            "template_version": BLUEPRINT_TEMPLATE_VERSION,
+            "fallback_reason": reason,
+        }
+
+    def _default_blueprint_body(self, section: str, blueprint_context: Dict) -> Dict:
+        definition = BLUEPRINT_SECTION_DEFINITIONS[section]
+        title = definition["title"]
+        owner = definition["owner"]
+        research = blueprint_context.get("research_brief") or {}
+        research_summary = ""
+        if isinstance(research, dict):
+            research_summary = str(research.get("research_summary") or "").strip()
+        findings = self._section_evidence_points(blueprint_context, owner)
+        risks = self._section_risk_points(blueprint_context)
+        coverage = blueprint_context.get("research_coverage", {})
+        completed = int(coverage.get("completed") or 0)
+        total = int(coverage.get("total") or 0)
+        confidence = self._default_launch_confidence(
+            completed,
+            total,
+            blueprint_context.get("consensus_level"),
+            bool(risks),
+        )
+        return {
+            "objective": (
+                f"Define the {title.lower()} for the proposed launch decision "
+                "using available research, debate outcomes, and unresolved constraints."
+            ),
+            "key_findings": findings
+            or [
+                research_summary
+                or "Available evidence is limited, so this section should be treated as a planning baseline."
+            ],
+            "supporting_evidence": self._supporting_evidence_points(blueprint_context),
+            "risks": risks or ["Evidence gaps remain and should be validated before scaling."],
+            "mitigation_strategy": (
+                "Run a focused validation pass on the highest-risk assumptions, keep MVP scope narrow, "
+                "and update this section when stronger evidence is available."
+            ),
+            "recommendation": self._section_recommendation(section, blueprint_context),
+            "launch_confidence": confidence,
+            "confidence_explanation": (
+                f"Confidence reflects {coverage.get('label', '0 / 0 Objectives').lower()}, "
+                f"{self._normalize_consensus_level(blueprint_context.get('consensus_level')).lower()} consensus, "
+                "and remaining execution risks."
+            ),
+            "validated_by": owner,
+        }
+
+    def _section_evidence_points(self, blueprint_context: Dict, owner: str) -> List[str]:
+        points = []
+        for finding in (blueprint_context.get("agent_briefs") or {}).items():
+            agent, content = finding
+            if agent == owner and content:
+                points.append(self._sanitize_blueprint_text(content))
+        if not points:
+            research = blueprint_context.get("research_brief") or {}
+            if isinstance(research, dict):
+                for objective in research.get("objectives", []) or []:
+                    name = objective.get("name")
+                    status = objective.get("status")
+                    if name:
+                        points.append(f"{name} is marked {status or 'unverified'} in the research checklist.")
+                    if len(points) >= 3:
+                        break
+        return [item for item in points if item][:3]
+
+    def _supporting_evidence_points(self, blueprint_context: Dict) -> List[str]:
+        points = []
+        research = blueprint_context.get("research_brief") or {}
+        if isinstance(research, dict):
+            for source in research.get("sources", []) or []:
+                if isinstance(source, dict):
+                    title = source.get("title") or source.get("source_title") or "Source"
+                    url = source.get("url") or source.get("source_url") or ""
+                    points.append(f"{title}: {url}".strip(": "))
+                else:
+                    points.append(str(source))
+                if len(points) >= 4:
+                    break
+        if not points:
+            missing = blueprint_context.get("missing_evidence") or []
+            if missing:
+                points.append("Missing evidence remains documented in the research brief.")
+        return points or ["No external source was available for this section."]
+
+    def _section_risk_points(self, blueprint_context: Dict) -> List[str]:
+        risks = []
+        for item in blueprint_context.get("missing_evidence", []) or []:
+            text = self._sanitize_blueprint_text(item)
+            if text:
+                risks.append(text)
+            if len(risks) >= 3:
+                break
+        disagreements = self._sanitize_blueprint_text(
+            blueprint_context.get("disagreements", "")
+        )
+        if disagreements and len(risks) < 3:
+            risks.append(disagreements)
+        return risks
+
+    def _section_recommendation(self, section: str, blueprint_context: Dict) -> str:
+        resolution = self._sanitize_blueprint_text(
+            blueprint_context.get("final_resolution", "")
+        )
+        if resolution:
+            return resolution
+        if section == "final_recommendation":
+            return "Proceed only after validating the highest-risk assumptions with a narrow MVP."
+        if section == "product_mvp":
+            return "Keep the first release focused on the smallest testable value proposition."
+        return "Use this section as a decision baseline and refresh it as stronger validation arrives."
+
+    def _default_launch_confidence(
+        self,
+        completed: int,
+        total: int,
+        consensus_level: str,
+        has_risks: bool,
+    ) -> int:
+        score = 52
+        if total:
+            score += int((completed / total) * 28)
+        level = self._normalize_consensus_level(consensus_level)
+        if level == "Strong":
+            score += 12
+        elif level == "Moderate":
+            score += 6
+        if has_risks:
+            score -= 8
+        return max(0, min(100, score))
+
+    def _format_blueprint_content(self, title: str, body: Dict) -> str:
+        def list_or_text(value):
+            if isinstance(value, list):
+                clean = [str(item).strip() for item in value if str(item).strip()]
+                return "\n".join(f"- {item}" for item in clean) if clean else "- Not specified."
+            return str(value or "Not specified.").strip()
+
+        return (
+            f"## {title}\n\n"
+            f"### Objective\n{list_or_text(body.get('objective'))}\n\n"
+            f"### Key Findings\n{list_or_text(body.get('key_findings'))}\n\n"
+            f"### Supporting Evidence\n{list_or_text(body.get('supporting_evidence'))}\n\n"
+            f"### Risks\n{list_or_text(body.get('risks'))}\n\n"
+            f"### Mitigation Strategy\n{list_or_text(body.get('mitigation_strategy'))}\n\n"
+            f"### Recommendation\n{list_or_text(body.get('recommendation'))}\n\n"
+            f"### Launch Confidence\n{self._coerce_launch_confidence(body.get('launch_confidence'))}%\n\n"
+            f"### Confidence Explanation\n{list_or_text(body.get('confidence_explanation'))}\n\n"
+            f"### Validated By\n{body.get('validated_by') or 'Responsible Agent'}"
+        )
+
+    def _compile_blueprint_markdown(self, sections: Dict[str, Dict]) -> str:
+        parts = ["# Startup Blueprint"]
+        for section in CANONICAL_SECTIONS:
+            payload = sections.get(section) or {}
+            title = payload.get("title") or BLUEPRINT_SECTION_DEFINITIONS[section]["title"]
+            metadata = payload.get("metadata") or {}
+            parts.extend(
+                [
+                    f"\n# {title}",
+                    (
+                        f"Validated By: {metadata.get('validated_by') or payload.get('owner')}\n"
+                        f"Launch Confidence: {metadata.get('launch_confidence', 0)}%\n"
+                        f"Research Coverage: {metadata.get('research_coverage', '0 / 0 Objectives')}\n"
+                        f"Consensus Level: {metadata.get('consensus_level', 'Weak')}"
+                    ),
+                    str(payload.get("content") or "").strip(),
+                ]
+            )
+        return "\n\n".join(part for part in parts if part).strip()
+
+    def _sanitize_blueprint_list(self, value) -> List[str]:
+        if isinstance(value, list):
+            items = value
+        elif value:
+            items = [value]
+        else:
+            items = []
+        cleaned = []
+        for item in items:
+            text = self._sanitize_blueprint_text(item)
+            if text:
+                cleaned.append(text)
+            if len(cleaned) >= 5:
+                break
+        return cleaned
+
+    def _sanitize_blueprint_text(self, value) -> str:
+        text = self._compress_text(value or "", 1200)
+        text = re.sub(r"(?m)^\s*\[[^\]\n]{1,60}\]\s*:\s*", "", text)
+        text = re.sub(r"\bI agree with\b", "The evidence supports", text, flags=re.I)
+        text = re.sub(r"\bI disagree with\b", "The evidence challenges", text, flags=re.I)
+        text = re.sub(
+            r"\bthe\s+([A-Za-z ]{2,40}?)\s+agent\s+said\b",
+            "the available debate context indicates",
+            text,
+            flags=re.I,
+        )
+        text = re.sub(
+            r"\bas\s+([A-Za-z ]{2,40}?)\s+mentioned\b",
+            "based on the available context",
+            text,
+            flags=re.I,
+        )
+        text = re.sub(r"\bResearch Summary\b\s*:?", "Evidence", text, flags=re.I)
+        return " ".join(text.split())
+
+    def _contains_blueprint_banned_text(self, text: str) -> bool:
+        return any(
+            re.search(pattern, str(text or ""), flags=re.IGNORECASE)
+            for pattern in self.BLUEPRINT_BANNED_PATTERNS
+        )
+
+    def _coerce_launch_confidence(self, value) -> int:
+        try:
+            return max(0, min(100, int(float(str(value).replace("%", "").strip() or 0))))
+        except (TypeError, ValueError):
+            return 0
+
+    def _normalize_consensus_level(self, value) -> str:
+        text = str(value or "").strip().title()
+        return text if text in {"Strong", "Moderate", "Weak"} else "Weak"
+
     def _report_context_debug(self, report_context: Dict) -> Dict:
         messages = report_context.get("all_agent_messages", []) or []
         agent_names = []
@@ -740,13 +1254,7 @@ class DebateMixin:
         }
 
     async def _summarize(self) -> AsyncGenerator[Dict, None]:
-        """Generate final summary."""
-        agent_name = "Report Generator"
-        agent = self.agents.get(agent_name) or self.agents.get(self.PRODUCT_MANAGER_ROLE)
-        if not agent:
-            return
-
-        agent.reset()
+        """Generate final Blueprint sections and a compatibility markdown summary."""
         recent = self.memory_store.retrieve_relevant(
             "summary conclusion decision", limit=8
         )
@@ -764,50 +1272,24 @@ class DebateMixin:
             debug["has_research_brief"],
             debug["has_product_manager_output"],
         )
-        agent_memory_context = self._all_agent_memory_context()
-        prompt = self._render_prompt(
-            "summary.final",
-            report_context=self._compress_text(
-                json.dumps(report_context, ensure_ascii=False),
-                60000,
-            ),
-            context=context,
-            agent_memory_context=agent_memory_context,
-        )
-
         try:
-            response = await asyncio.wait_for(
-                agent.astep(prompt),
-                timeout=45.0,
-            )
-
-            if response and response.msgs:
-                yield {
-                    "type": "summarizer",
-                    "agent": agent_name if agent_name in self.agents else "Summarizer",
-                    "content": self._normalize_final_report(
-                        response.msgs[0].content,
-                        recent,
-                        report_context=report_context,
-                    ),
-                }
-                return
-
+            sections = await self._generate_blueprint_sections(report_context)
+            self.generated_blueprint_sections = sections
             yield {
                 "type": "summarizer",
-                "agent": "Summarizer",
-                "content": self._fallback_summary(recent, report_context=report_context),
+                "agent": "Blueprint Synthesizer",
+                "content": self._compile_blueprint_markdown(sections),
             }
         except asyncio.TimeoutError:
             yield {
                 "type": "summarizer",
-                "agent": "Summarizer",
+                "agent": "Blueprint Synthesizer",
                 "content": self._fallback_summary(recent, report_context=report_context),
             }
         except Exception as e:
             yield {
                 "type": "error",
-                "agent": "Summarizer",
+                "agent": "Blueprint Synthesizer",
                 "content": f"Summary error: {self._error_text(e)}",
             }
 
@@ -817,6 +1299,18 @@ class DebateMixin:
         report_context: Dict | None = None,
     ) -> str:
         """Return a deterministic structured report if the model summary times out."""
+        if report_context:
+            blueprint_context = self._build_blueprint_context(report_context)
+            sections = {
+                section: self._fallback_blueprint_section(
+                    section,
+                    blueprint_context,
+                    reason="Summary fallback used.",
+                )
+                for section in CANONICAL_SECTIONS
+            }
+            self.generated_blueprint_sections = sections
+            return self._compile_blueprint_markdown(sections)
         return self._structured_fallback_report(messages, report_context=report_context)
 
     def _normalize_final_report(
@@ -1007,7 +1501,7 @@ class DebateMixin:
                 continue
             content = self._compress_text(message.get("content", ""), 420)
             if content and content not in selected:
-                selected.append(f"- {message.get('agent')}: {content}")
+                selected.append(f"- {self._sanitize_blueprint_text(content)}")
             if len(selected) >= 3:
                 break
         return "\n".join(selected)
@@ -1101,8 +1595,7 @@ class DebateMixin:
             content = str(message.get("content") or "")
             if not any(marker in content.lower() for marker in markers):
                 continue
-            agent = message.get("agent", "Agent")
-            selected.append(f"{agent}: {self._compress_text(content, 260)}")
+            selected.append(self._sanitize_blueprint_text(content))
             if len(selected) >= 2:
                 break
         return " ".join(selected) if selected else fallback

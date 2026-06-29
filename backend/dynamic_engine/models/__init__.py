@@ -1,6 +1,8 @@
 """Model exports for the dynamic engine package."""
 
 from .models import (
+    BLUEPRINT_SECTION_DEFINITIONS,
+    BLUEPRINT_TEMPLATE_VERSION,
     CANONICAL_SECTIONS,
     SECTION_ALIASES,
     ChatSession,
@@ -13,6 +15,8 @@ from .models import (
 from .research import StructuredResearch
 
 __all__ = [
+    "BLUEPRINT_SECTION_DEFINITIONS",
+    "BLUEPRINT_TEMPLATE_VERSION",
     "CANONICAL_SECTIONS",
     "SECTION_ALIASES",
     "ChatSession",

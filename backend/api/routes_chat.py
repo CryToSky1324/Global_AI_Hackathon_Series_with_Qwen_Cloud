@@ -45,6 +45,19 @@ def _role_for_event(event_type: str) -> str:
 
 
 def _persist_stream_event(session_id: str | None, event: dict, title: str) -> str | None:
+    if event.get("type") in {
+        "status",
+        "phase",
+        "info",
+        "artifact",
+        "agent_typing",
+        "agent_delta",
+        "round_started",
+        "debate_needs_more",
+        "section_updated",
+    }:
+        return event.get("chat_id") or session_id
+
     persisted_event = _event_for_persistence(event)
     event_type = event.get("type", "")
     event_chat_id = event.get("chat_id")

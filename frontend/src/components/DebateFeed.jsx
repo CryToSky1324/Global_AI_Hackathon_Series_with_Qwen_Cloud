@@ -14,6 +14,7 @@ export default function DebateFeed({ events }) {
     if (event.type === 'phase') return 'phase';
     if (event.type === 'error') return 'error';
     if (event.type === 'session_saved' || event.type === 'summarizer') return 'complete';
+    if (event.type === 'agent_typing' || event.type === 'agent_delta') return 'assistant streaming';
     return 'assistant';
   };
 
@@ -33,6 +34,15 @@ export default function DebateFeed({ events }) {
 
   const renderContent = (event) => {
     if (event.type === 'phase') return 'Genesis is moving the boardroom into the next step.';
+    if (event.type === 'agent_typing') {
+      return (
+        <span className="typing-indicator" aria-label={`${event.agent || 'Agent'} is typing`}>
+          <span />
+          <span />
+          <span />
+        </span>
+      );
+    }
     if (typeof event.content === 'object') return JSON.stringify(event.content, null, 2);
     return event.content;
   };

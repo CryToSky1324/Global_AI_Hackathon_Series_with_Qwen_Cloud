@@ -1,7 +1,14 @@
 import re
 from typing import Dict, List
 
-from ..models import CANONICAL_SECTIONS, ChatSession, ImpactAssessment, normalize_section_key
+from ..models import (
+    BLUEPRINT_SECTION_DEFINITIONS,
+    BLUEPRINT_TEMPLATE_VERSION,
+    CANONICAL_SECTIONS,
+    ChatSession,
+    ImpactAssessment,
+    normalize_section_key,
+)
 
 
 class SessionProjectorMixin:
@@ -49,29 +56,34 @@ class SessionProjectorMixin:
         return findings
 
     def _build_initial_sections(self, task: str, summary_text: str) -> Dict:
-        debate_summary = self._compress_text(
-            " ".join(
-                f"{item.get('agent')}: {item.get('content')}"
-                for round_item in self.debate_round_history
-                for item in round_item.get("responses", [])
-            ),
-            3000,
-        )
-        summary = summary_text or debate_summary or "No final summary was produced."
+        generated = getattr(self, "generated_blueprint_sections", {}) or {}
+        if generated:
+            return {
+                section: self._normalize_projected_section(
+                    section,
+                    generated.get(section),
+                    task,
+                    source="initial_run",
+                    status="draft",
+                )
+                for section in CANONICAL_SECTIONS
+            }
+
+        summary = summary_text or "No final blueprint was produced."
         report_sections = self._sections_from_final_report(summary)
         sections = {}
         for section in CANONICAL_SECTIONS:
             section_content = report_sections.get(section) or self._section_content(
                 section,
                 summary,
-                debate_summary,
             )
-            sections[section] = {
-                "status": "draft",
-                "source": "initial_run",
-                "user_idea": task,
-                "content": section_content,
-            }
+            sections[section] = self._normalize_projected_section(
+                section,
+                {"content": section_content},
+                task,
+                source="initial_run",
+                status="draft",
+            )
         return sections
 
     def _build_refinement_section_updates(
@@ -87,30 +99,97 @@ class SessionProjectorMixin:
             if section not in CANONICAL_SECTIONS:
                 continue
             previous = session.sections.get(section, {})
-            content = self._section_content(section, summary_text, summary_text)
-            updates[section] = {
-                "status": "updated",
-                "source": "refinement",
-                "request": request,
-                "previous": previous,
-                "content": content,
-                "impact_rationale": impact.rationale,
-            }
+            generated = getattr(self, "generated_blueprint_sections", {}) or {}
+            section_payload = generated.get(section)
+            if not section_payload:
+                section_payload = {"content": self._section_content(section, summary_text)}
+            updates[section] = self._normalize_projected_section(
+                section,
+                section_payload,
+                getattr(session, "user_idea", "") or request,
+                source="refinement",
+                status="updated",
+                extra={
+                    "request": request,
+                    "previous": previous,
+                    "impact_rationale": impact.rationale,
+                },
+            )
         return updates
 
-    def _section_content(self, section: str, summary: str, debate_summary: str) -> str:
-        labels = {
-            "mvp_scope": "MVP scope",
-            "business_plan": "Business plan",
-            "technical_architecture": "Technical architecture",
-            "ux_strategy": "UX strategy",
-            "go_to_market": "Go-to-market strategy",
-            "risk_assessment": "Risk assessment",
-            "financial_plan": "Financial plan",
-        }
-        label = labels.get(section, section)
-        basis = summary or debate_summary or "No agent output was available."
+    def _section_content(self, section: str, summary: str) -> str:
+        definition = BLUEPRINT_SECTION_DEFINITIONS.get(section, {})
+        label = definition.get("title", section.replace("_", " ").title())
+        basis = summary or "No synthesized blueprint output was available."
         return self._compress_text(f"{label}: {basis}", 2200)
+
+    def _normalize_projected_section(
+        self,
+        section: str,
+        payload,
+        user_idea: str,
+        source: str,
+        status: str,
+        extra: Dict | None = None,
+    ) -> Dict:
+        definition = BLUEPRINT_SECTION_DEFINITIONS.get(section, {})
+        payload = payload if isinstance(payload, dict) else {"content": str(payload or "")}
+        body = payload.get("body") if isinstance(payload.get("body"), dict) else {}
+        metadata = payload.get("metadata") if isinstance(payload.get("metadata"), dict) else {}
+        owner = payload.get("owner") or definition.get("owner", "Root Coordinator")
+        title = payload.get("title") or definition.get("title", section.replace("_", " ").title())
+        content = str(payload.get("content") or "").strip()
+        if not content:
+            content = self._format_section_body(body, title, owner)
+
+        normalized = {
+            "title": title,
+            "owner": owner,
+            "content": content,
+            "body": body,
+            "metadata": {
+                "validated_by": metadata.get("validated_by") or owner,
+                "launch_confidence": self._coerce_confidence(
+                    metadata.get("launch_confidence", 0)
+                ),
+                "research_coverage": metadata.get("research_coverage") or "0 / 0 Objectives",
+                "consensus_level": metadata.get("consensus_level") or "Weak",
+            },
+            "status": payload.get("status") or status,
+            "source": payload.get("source") or source,
+            "user_idea": payload.get("user_idea") or user_idea,
+            "template_version": payload.get("template_version") or BLUEPRINT_TEMPLATE_VERSION,
+        }
+        if extra:
+            normalized.update(extra)
+        return normalized
+
+    def _coerce_confidence(self, value) -> int:
+        try:
+            return max(0, min(100, int(float(str(value).replace("%", "").strip() or 0))))
+        except (TypeError, ValueError):
+            return 0
+
+    def _format_section_body(self, body: Dict, title: str, owner: str) -> str:
+        def text(name: str, fallback: str = "Not specified."):
+            value = body.get(name)
+            if isinstance(value, list):
+                return "\n".join(f"- {item}" for item in value if str(item).strip()) or fallback
+            return str(value or fallback).strip()
+
+        confidence = body.get("launch_confidence", 0)
+        return (
+            f"## {title}\n\n"
+            f"### Objective\n{text('objective')}\n\n"
+            f"### Key Findings\n{text('key_findings')}\n\n"
+            f"### Supporting Evidence\n{text('supporting_evidence')}\n\n"
+            f"### Risks\n{text('risks')}\n\n"
+            f"### Mitigation Strategy\n{text('mitigation_strategy')}\n\n"
+            f"### Recommendation\n{text('recommendation')}\n\n"
+            f"### Launch Confidence\n{confidence}%\n\n"
+            f"### Confidence Explanation\n{text('confidence_explanation')}\n\n"
+            f"### Validated By\n{body.get('validated_by') or owner}"
+        )
 
     def _merge_section_update(self, before: Dict | None, after: Dict | None) -> Dict:
         before = before if isinstance(before, dict) else {}
@@ -129,14 +208,21 @@ class SessionProjectorMixin:
 
     def _sections_from_final_report(self, report: str) -> Dict[str, str]:
         heading_map = {
-            "Business Model": "business_plan",
+            "Executive Summary": "executive_summary",
+            "Problem Statement": "problem_statement",
+            "Market Analysis": "market_analysis",
+            "Market Validation": "market_validation",
+            "Product & MVP": "product_mvp",
+            "MVP Definition": "product_mvp",
             "Technical Architecture": "technical_architecture",
-            "UX Strategy": "ux_strategy",
-            "Marketing Strategy": "go_to_market",
-            "MVP Definition": "mvp_scope",
-            "Risk Assessment": "risk_assessment",
             "Financial Analysis": "financial_plan",
-            "Implementation Roadmap": "mvp_scope",
+            "Financial Plan": "financial_plan",
+            "Marketing Strategy": "marketing_strategy",
+            "Legal & Compliance": "legal_compliance",
+            "Risk Assessment": "risk_assessment",
+            "Implementation Roadmap": "implementation_roadmap",
+            "Final Recommendation": "final_recommendation",
+            "Business Model": "market_analysis",
         }
         extracted: Dict[str, str] = {}
         text = str(report or "").replace("\r\n", "\n").replace("\r", "\n")

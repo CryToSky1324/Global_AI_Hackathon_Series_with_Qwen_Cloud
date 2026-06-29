@@ -1,16 +1,23 @@
 import React, { useState } from 'react';
-import { FileText, Award, Layers, DollarSign, Map, AlertCircle, ShieldCheck, MousePointer2, Rocket } from 'lucide-react';
-import { BLUEPRINT_SECTIONS, getSectionContent } from '../utils/blueprintSections';
+import { FileText, BadgeCheck, BarChart3, DollarSign, Map, AlertCircle, ShieldCheck, Rocket, Scale, SearchCheck, Target } from 'lucide-react';
+import { BLUEPRINT_SECTIONS, getSection } from '../utils/blueprintSections';
 
 const TABS = [
   { id: 'overview', label: 'Overview', icon: Map },
-  { id: 'mvp_scope', label: 'MVP Scope', icon: Layers },
-  { id: 'business_plan', label: 'Business Plan', icon: Award },
-  { id: 'technical_architecture', label: 'Technical', icon: FileText },
-  { id: 'ux_strategy', label: 'UX', icon: MousePointer2 },
-  { id: 'go_to_market', label: 'Go-To-Market', icon: Rocket },
-  { id: 'risk_assessment', label: 'Risk', icon: ShieldCheck },
-  { id: 'financial_plan', label: 'Financials', icon: DollarSign },
+  ...BLUEPRINT_SECTIONS.map((section) => ({
+    id: section.id,
+    label: section.shortLabel,
+    icon: {
+      executive_summary: BadgeCheck,
+      problem_statement: Target,
+      market_analysis: BarChart3,
+      market_validation: SearchCheck,
+      financial_plan: DollarSign,
+      marketing_strategy: Rocket,
+      legal_compliance: Scale,
+      risk_assessment: ShieldCheck,
+    }[section.id] || FileText,
+  })),
 ];
 
 function EmptySection({ children }) {
@@ -108,11 +115,18 @@ export default function ReportPanel({ sessionDetails }) {
       default:
         {
           const section = BLUEPRINT_SECTIONS.find((item) => item.id === activeTab);
-          const content = getSectionContent(sessionDetails, activeTab);
+          const value = getSection(sessionDetails, activeTab);
+          const content = value?.content || '';
           if (!section) return null;
           return (
             <div className="report-section">
               <h4>{section.label}</h4>
+              {value?.metadata && (
+                <div className="report-section-meta">
+                  <span>{value.metadata.launch_confidence ?? 0}% confidence</span>
+                  <span>{value.metadata.consensus_level || 'Weak'} consensus</span>
+                </div>
+              )}
               {content ? (
                 <div className="report-text">{content}</div>
               ) : (

@@ -107,7 +107,7 @@ class SessionStoreTests(unittest.TestCase):
             self.assertEqual(loaded.chat_id, session.chat_id)
             self.assertEqual(loaded.user_idea, "Build a smart pantry assistant")
             self.assertEqual(
-                loaded.sections["business_plan"]["content"],
+                loaded.sections["market_analysis"]["content"],
                 "Freemium plan",
             )
             self.assertEqual(set(CANONICAL_SECTIONS), set(loaded.sections.keys()))
@@ -145,7 +145,7 @@ class ImpactParserTests(unittest.TestCase):
 
         self.assertEqual(
             impact.affected_sections,
-            ["business_plan", "financial_plan"],
+            ["market_analysis", "financial_plan"],
         )
         self.assertEqual(
             impact.agents_needed,
@@ -756,9 +756,10 @@ class DebateExecutionTests(unittest.IsolatedAsyncioTestCase):
             )
         ]
 
-        self.assertEqual(len(events), 5)
+        final_events = [event for event in events if event["type"] == "agent_response"]
+        self.assertEqual(len(final_events), 5)
         self.assertEqual(
-            [event["agent"] for event in events],
+            [event["agent"] for event in final_events],
             [
                 "UX Researcher",
                 "Finance Analyst",
@@ -767,9 +768,10 @@ class DebateExecutionTests(unittest.IsolatedAsyncioTestCase):
                 "Business Analyst",
             ],
         )
-        self.assertEqual(set(events[0].keys()), {"type", "agent", "content", "round"})
-        self.assertEqual(events[0]["type"], "agent_response")
-        self.assertEqual(events[0]["round"], 1)
+        self.assertTrue(any(event["type"] == "agent_typing" for event in events))
+        self.assertTrue(any(event["type"] == "agent_delta" for event in events))
+        self.assertEqual(final_events[0]["type"], "agent_response")
+        self.assertEqual(final_events[0]["round"], 1)
         self.assertEqual(captured[0]["prior"], [])
         self.assertEqual(captured[1]["prior"][-1]["agent"], "UX Researcher")
         self.assertEqual(captured[2]["prior"][-1]["agent"], "Finance Analyst")
@@ -839,13 +841,9 @@ class DebateExecutionTests(unittest.IsolatedAsyncioTestCase):
         engine.current_task = "Build a clinic booking app"
         engine.memory_store = FakeMemoryStore()
         engine.debate_round_history = []
-        captured = {}
-
         class FakeRenderer:
             def render(self, prompt_id, **values):
-                captured["prompt_id"] = prompt_id
-                captured["values"] = values
-                return "rendered report prompt"
+                return ""
 
         class FakeAgent:
             def reset(self):
@@ -870,12 +868,24 @@ class DebateExecutionTests(unittest.IsolatedAsyncioTestCase):
         content = events[0]["content"]
 
         self.assertEqual(events[0]["type"], "summarizer")
-        self.assertEqual(events[0]["agent"], "Report Generator")
-        self.assertEqual(captured["prompt_id"], "summary.final")
-        for heading in engine.FINAL_REPORT_SECTIONS:
+        self.assertEqual(events[0]["agent"], "Blueprint Synthesizer")
+        for heading in (
+            "Executive Summary",
+            "Problem Statement",
+            "Market Analysis",
+            "Market Validation",
+            "Product & MVP",
+            "Technical Architecture",
+            "Financial Plan",
+            "Marketing Strategy",
+            "Legal & Compliance",
+            "Risk Assessment",
+            "Implementation Roadmap",
+            "Final Recommendation",
+        ):
             self.assertIn(f"# {heading}", content)
-        self.assertIn("\n# Problem Statement", content)
-        self.assertIn("Insufficient information from the discussion.", content)
+        self.assertIn("Launch Confidence:", content)
+        self.assertNotIn("[Product Manager]:", content)
 
     def test_final_report_normalization_rejects_raw_chat_logs(self):
         engine = object.__new__(DynamicStreamingEngine)
@@ -1320,9 +1330,9 @@ class ProjectEngineTests(unittest.IsolatedAsyncioTestCase):
             created = next(event for event in events if event["type"] == "session_created")
             session = store.load(created["chat_id"])
 
-            self.assertIn("Freemium packaging", session.sections["business_plan"]["content"])
+            self.assertIn("Freemium packaging", session.sections["market_analysis"]["content"])
             self.assertIn("Risk review", session.sections["risk_assessment"]["content"])
-            self.assertIn("First testable release", session.sections["mvp_scope"]["content"])
+            self.assertIn("First testable release", session.sections["product_mvp"]["content"])
 
     async def test_empty_section_update_preserves_previous_content(self):
         engine = StubProjectEngine(SessionStore(Path(tempfile.gettempdir())))
@@ -1361,7 +1371,7 @@ class ProjectEngineTests(unittest.IsolatedAsyncioTestCase):
             )
             self.assertEqual(
                 loaded.change_history[-1]["sections_changed"],
-                ["business_plan"],
+                ["market_analysis"],
             )
             self.assertTrue(loaded.change_history[-1]["research_used"])
             self.assertIn("Research Agent", loaded.change_history[-1]["agents_used"])
@@ -1395,7 +1405,7 @@ class ProjectEngineTests(unittest.IsolatedAsyncioTestCase):
             self.assertTrue(loaded.change_history[-1]["research_used"])
             self.assertEqual(
                 loaded.change_history[-1]["sections_changed"],
-                ["business_plan", "go_to_market"],
+                ["market_analysis", "marketing_strategy"],
             )
 
 

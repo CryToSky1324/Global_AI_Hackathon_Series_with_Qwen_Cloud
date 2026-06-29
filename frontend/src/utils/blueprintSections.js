@@ -1,52 +1,99 @@
 export const BLUEPRINT_SECTIONS = [
   {
-    id: 'mvp_scope',
-    label: 'MVP Scope',
-    shortLabel: 'MVP',
-    aliases: ['action_items'],
-    headings: ['MVP Definition', 'Implementation Roadmap'],
+    id: 'executive_summary',
+    label: 'Executive Summary',
+    shortLabel: 'Summary',
+    owner: 'Root Coordinator',
+    aliases: [],
+    headings: ['Executive Summary'],
   },
   {
-    id: 'business_plan',
-    label: 'Business Plan',
-    shortLabel: 'Business',
-    aliases: ['pitch_script'],
-    headings: ['Business Model'],
+    id: 'problem_statement',
+    label: 'Problem Statement',
+    shortLabel: 'Problem',
+    owner: 'UX Researcher',
+    aliases: ['ux_strategy'],
+    headings: ['Problem Statement', 'UX Strategy', 'Customer Persona'],
+  },
+  {
+    id: 'market_analysis',
+    label: 'Market Analysis',
+    shortLabel: 'Market',
+    owner: 'Business Analyst',
+    aliases: ['business_plan'],
+    headings: ['Market Analysis', 'Business Model'],
+  },
+  {
+    id: 'market_validation',
+    label: 'Market Validation',
+    shortLabel: 'Validation',
+    owner: 'Research Agent',
+    aliases: [],
+    headings: ['Market Validation', 'Key Evidence'],
+  },
+  {
+    id: 'product_mvp',
+    label: 'Product & MVP',
+    shortLabel: 'MVP',
+    owner: 'Product Manager',
+    aliases: ['mvp_scope', 'action_items'],
+    headings: ['Product & MVP', 'MVP Definition', 'Proposed Solution'],
   },
   {
     id: 'technical_architecture',
     label: 'Technical Architecture',
     shortLabel: 'Technical',
+    owner: 'Technical Lead',
     aliases: [],
     headings: ['Technical Architecture'],
-  },
-  {
-    id: 'ux_strategy',
-    label: 'UX Strategy',
-    shortLabel: 'UX',
-    aliases: [],
-    headings: ['UX Strategy'],
-  },
-  {
-    id: 'go_to_market',
-    label: 'Go-To-Market',
-    shortLabel: 'GTM',
-    aliases: ['marketing_strategy'],
-    headings: ['Marketing Strategy'],
-  },
-  {
-    id: 'risk_assessment',
-    label: 'Risk Assessment',
-    shortLabel: 'Risk',
-    aliases: [],
-    headings: ['Risk Assessment'],
   },
   {
     id: 'financial_plan',
     label: 'Financial Plan',
     shortLabel: 'Financial',
+    owner: 'Finance Analyst',
     aliases: ['financial_projection'],
-    headings: ['Financial Analysis'],
+    headings: ['Financial Plan', 'Financial Analysis'],
+  },
+  {
+    id: 'marketing_strategy',
+    label: 'Marketing Strategy',
+    shortLabel: 'Marketing',
+    owner: 'Marketing Strategist',
+    aliases: ['go_to_market', 'marketing_strategy'],
+    headings: ['Marketing Strategy'],
+  },
+  {
+    id: 'legal_compliance',
+    label: 'Legal & Compliance',
+    shortLabel: 'Legal',
+    owner: 'Legal Advisor',
+    aliases: [],
+    headings: ['Legal & Compliance'],
+  },
+  {
+    id: 'risk_assessment',
+    label: 'Risk Assessment',
+    shortLabel: 'Risk',
+    owner: 'Risk & Compliance',
+    aliases: [],
+    headings: ['Risk Assessment'],
+  },
+  {
+    id: 'implementation_roadmap',
+    label: 'Implementation Roadmap',
+    shortLabel: 'Roadmap',
+    owner: 'Product Manager',
+    aliases: [],
+    headings: ['Implementation Roadmap'],
+  },
+  {
+    id: 'final_recommendation',
+    label: 'Final Recommendation',
+    shortLabel: 'Decision',
+    owner: 'Root Coordinator',
+    aliases: [],
+    headings: ['Final Recommendation'],
   },
 ];
 
@@ -63,17 +110,30 @@ export function normalizeBlueprintSectionKey(key) {
   return SECTION_ALIAS_MAP[normalized] || normalized;
 }
 
-export function getSectionContent(sessionDetails, sectionId) {
+export function getSection(sessionDetails, sectionId) {
   const sections = sessionDetails?.sections || {};
   const section = BLUEPRINT_SECTIONS.find((item) => item.id === sectionId);
   const candidateKeys = [sectionId, ...(section?.aliases || [])];
 
   for (const key of candidateKeys) {
-    const value = extractContent(sections[key]);
-    if (value) return value;
+    const value = sections[key];
+    if (value) return normalizeSectionValue(value, section);
   }
 
-  return getFinalReportSectionContent(sessionDetails, sectionId);
+  const finalReportContent = getFinalReportSectionContent(sessionDetails, sectionId);
+  if (finalReportContent) {
+    return normalizeSectionValue({ content: finalReportContent }, section);
+  }
+
+  return null;
+}
+
+export function getSectionContent(sessionDetails, sectionId) {
+  return getSection(sessionDetails, sectionId)?.content || '';
+}
+
+export function getSectionMetadata(sessionDetails, sectionId) {
+  return getSection(sessionDetails, sectionId)?.metadata || {};
 }
 
 export function countGeneratedSections(sessionDetails) {
@@ -86,17 +146,17 @@ export function extractContent(value) {
   if (typeof value === 'object') {
     if (typeof value.content === 'string') return value.content.trim();
     if (typeof value.text === 'string') return value.text.trim();
-    return JSON.stringify(value, null, 2);
+    return '';
   }
   return String(value).trim();
 }
 
 export function mergeBlueprintSection(sections, rawKey, rawAfter) {
   const key = normalizeBlueprintSectionKey(rawKey);
-  const nextContent = extractContent(rawAfter);
   const previous = sections?.[key] || {};
+  const next = typeof rawAfter === 'object' && rawAfter !== null ? rawAfter : { content: extractContent(rawAfter) };
+  const nextContent = extractContent(next);
   const previousContent = extractContent(previous);
-  const next = typeof rawAfter === 'object' && rawAfter !== null ? rawAfter : { content: nextContent };
 
   if (!nextContent && previousContent) {
     return {
@@ -113,6 +173,37 @@ export function mergeBlueprintSection(sections, rawKey, rawAfter) {
   return {
     ...sections,
     [key]: next,
+  };
+}
+
+function normalizeSectionValue(value, section) {
+  if (!value) return null;
+  if (typeof value === 'string') {
+    return {
+      title: section?.label || '',
+      owner: section?.owner || '',
+      content: value.trim(),
+      metadata: {},
+      body: {},
+    };
+  }
+  if (typeof value !== 'object') {
+    return {
+      title: section?.label || '',
+      owner: section?.owner || '',
+      content: String(value).trim(),
+      metadata: {},
+      body: {},
+    };
+  }
+  return {
+    title: value.title || section?.label || '',
+    owner: value.owner || section?.owner || value.metadata?.validated_by || '',
+    content: extractContent(value),
+    metadata: value.metadata || {},
+    body: value.body || {},
+    status: value.status,
+    source: value.source,
   };
 }
 

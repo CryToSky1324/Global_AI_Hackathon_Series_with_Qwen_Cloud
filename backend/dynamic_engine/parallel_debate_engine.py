@@ -92,7 +92,7 @@ class ParallelDebateEngine:
                 "round_started",
                 phase="debate",
                 round=round_num,
-                content=f"Round-table debate round {round_num} started",
+                content="",
                 agents=agent_names,
             )
 
@@ -100,11 +100,11 @@ class ParallelDebateEngine:
             current_round_records: List[Dict[str, str]] = []
             for agent_name, agent in selected_agents:
                 yield self._event(
-                    "agent_started",
+                    "agent_typing",
                     phase="debate",
                     round=round_num,
                     agent=agent_name,
-                    content=f"{agent_name} started round {round_num}",
+                    content="",
                 )
                 prompt = self._agent_prompt(
                     agent_name,
@@ -118,14 +118,8 @@ class ParallelDebateEngine:
                 record = {"agent": result.agent, "content": result.content}
                 current_round_records.append(record)
                 self._store_agent_result(result, round_num)
-                yield self._event(
-                    "agent_completed",
-                    phase="debate",
-                    round=round_num,
-                    agent=result.agent,
-                    content=result.content,
-                    ok=result.ok,
-                )
+                for event in self._agent_stream_events(result, round_num):
+                    yield event
 
             consensus = await self._coordinator_merge(
                 round_context=round_context,
@@ -414,6 +408,33 @@ class ParallelDebateEngine:
                 "and mark unverified claims as assumptions."
             )
         return clean
+
+    def _agent_stream_events(
+        self,
+        result: ParallelAgentResult,
+        round_num: int,
+    ) -> Iterable[Dict[str, Any]]:
+        words = str(result.content or "").split()
+        cumulative = []
+        for index, word in enumerate(words):
+            cumulative.append(word)
+            yield self._event(
+                "agent_delta",
+                phase="debate",
+                round=round_num,
+                agent=result.agent,
+                delta=word + (" " if index < len(words) - 1 else ""),
+                content=" ".join(cumulative),
+                ok=result.ok,
+            )
+        yield self._event(
+            "agent_response",
+            phase="debate",
+            round=round_num,
+            agent=result.agent,
+            content=result.content,
+            ok=result.ok,
+        )
 
     def _compress(self, text: Any, max_chars: int) -> str:
         return self.host._compress_text(text, max_chars)

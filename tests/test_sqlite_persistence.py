@@ -201,7 +201,6 @@ class EndpointPersistenceTests(TempDatabaseMixin, unittest.TestCase):
                 "session_created",
                 "user_input",
                 "research_complete",
-                "phase",
                 "agent_response",
                 "summarizer",
                 "session_saved",
