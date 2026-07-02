@@ -13,48 +13,9 @@ function apiUrl(path) {
   return `${API_BASE_URL}${path}`;
 }
 
-export class ApiError extends Error {
-  constructor(message, { status = 0, code = null, detail = null } = {}) {
-    super(message);
-    this.name = 'ApiError';
-    this.status = status;
-    this.code = code;
-    this.detail = detail;
-  }
-}
-
-async function parseErrorResponse(response, fallbackMessage) {
-  let payload = null;
-  let text = '';
-  try {
-    text = await response.text();
-    payload = text ? JSON.parse(text) : null;
-  } catch (error) {
-    payload = null;
-  }
-
-  const detail = payload?.detail ?? text;
-  const code = typeof detail === 'object' ? detail.code : null;
-  const message = typeof detail === 'object'
-    ? detail.message || fallbackMessage
-    : detail || fallbackMessage;
-  return new ApiError(message, {
-    status: response.status,
-    code,
-    detail,
-  });
-}
-
-async function requireOk(response, fallbackMessage) {
-  if (!response.ok) {
-    throw await parseErrorResponse(response, fallbackMessage);
-  }
-  return response;
-}
-
-export function isSessionNotFoundError(error) {
-  return error?.code === 'SESSION_NOT_FOUND' || error?.status === 404;
-}
+const cookieFetchOptions = {
+  credentials: 'include',
+};
 
 async function fetchWithTimeout(url, options = {}, timeoutMs = 7000) {
   const controller = new AbortController();
@@ -62,8 +23,8 @@ async function fetchWithTimeout(url, options = {}, timeoutMs = 7000) {
 
   try {
     return await fetch(url, {
+      ...cookieFetchOptions,
       ...options,
-      credentials: options.credentials || 'include',
       signal: options.signal || controller.signal,
     });
   } finally {
@@ -73,27 +34,37 @@ async function fetchWithTimeout(url, options = {}, timeoutMs = 7000) {
 
 export async function healthCheck() {
   const response = await fetchWithTimeout(apiUrl('/api/health'), {}, 4500);
-  return (await requireOk(response, `Health check failed: ${response.status}`)).json();
+  if (!response.ok) {
+    throw new Error(`Health check failed: ${response.status}`);
+  }
+  return response.json();
 }
 
 export async function listSessions() {
-  const response = await fetch(apiUrl('/api/sessions'), { credentials: 'include' });
-  return (await requireOk(response, `Failed to list sessions: ${response.status}`)).json();
+  const response = await fetch(apiUrl('/api/sessions'), cookieFetchOptions);
+  if (!response.ok) {
+    throw new Error(`Failed to list sessions: ${response.status}`);
+  }
+  return response.json();
 }
 
 export async function getSession(chatId) {
-  const response = await fetch(apiUrl(`/api/sessions/${encodeURIComponent(chatId)}`), {
-    credentials: 'include',
-  });
-  return (await requireOk(response, `Failed to load session details: ${response.status}`)).json();
+  const response = await fetch(apiUrl(`/api/sessions/${encodeURIComponent(chatId)}`), cookieFetchOptions);
+  if (!response.ok) {
+    throw new Error(`Failed to load session details: ${response.status}`);
+  }
+  return response.json();
 }
 
 export async function deleteSession(chatId) {
   const response = await fetch(apiUrl(`/api/sessions/${encodeURIComponent(chatId)}`), {
+    ...cookieFetchOptions,
     method: 'DELETE',
-    credentials: 'include',
   });
-  return (await requireOk(response, `Failed to delete session: ${response.status}`)).json();
+  if (!response.ok) {
+    throw new Error(`Failed to delete session: ${response.status}`);
+  }
+  return response.json();
 }
 
 /**
@@ -103,30 +74,33 @@ export async function deleteSession(chatId) {
 export async function streamSimulation({
   message,
   chatId,
-  runId,
   clientMessageId,
-  signal,
+  runId,
+  lastEventId,
   onEvent,
   onError,
   onDone,
 }) {
   try {
     const response = await fetch(apiUrl('/api/chat/stream'), {
+      ...cookieFetchOptions,
       method: 'POST',
-      credentials: 'include',
-      signal,
       headers: {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
         message,
         chat_id: chatId || null,
-        run_id: runId || null,
         client_message_id: clientMessageId || null,
+        run_id: runId || null,
+        last_event_id: lastEventId || null,
       }),
     });
 
-    await requireOk(response, `HTTP error! status: ${response.status}`);
+    if (!response.ok) {
+      const errorText = await response.text().catch(() => '');
+      throw new Error(`HTTP error! status: ${response.status}. Detail: ${errorText}`);
+    }
 
     if (!response.body) {
       throw new Error('Response body is empty (no readable stream)');
@@ -180,7 +154,6 @@ export async function streamSimulation({
 
     if (onDone) onDone();
   } catch (error) {
-    if (error?.name === 'AbortError') return;
     if (onError) onError(error);
   }
 }

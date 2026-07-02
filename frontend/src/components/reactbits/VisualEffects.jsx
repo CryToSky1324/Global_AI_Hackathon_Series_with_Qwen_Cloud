@@ -29,6 +29,16 @@ export function Beams({ className = '' }) {
   return <div className={`rb-beams ${className}`} aria-hidden="true" />;
 }
 
+export function LightRays({ className = '' }) {
+  return (
+    <div className={`rb-light-rays ${className}`} aria-hidden="true">
+      <span />
+      <span />
+      <span />
+    </div>
+  );
+}
+
 export function GradientText({ as: Tag = 'span', children, className = '' }) {
   return <Tag className={`rb-gradient-text ${className}`}>{children}</Tag>;
 }

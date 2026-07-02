@@ -1,442 +1,312 @@
-import React, { useEffect, useRef } from 'react';
-import { gsap } from 'gsap';
-import { ScrollTrigger } from 'gsap/ScrollTrigger';
-import {
-  ArrowRight,
-  BrainCircuit,
-  Check,
-  CircleDollarSign,
-  Cloud,
-  Code2,
-  Database,
-  FileText,
-  GitBranch,
-  Globe2,
-  Layers3,
-  Network,
-  Radio,
-  Search,
-  ShieldCheck,
-  Sparkles,
-  UsersRound,
-} from 'lucide-react';
-import {
-  SiFastapi,
-  SiGit,
-  SiGithub,
-  SiRailway,
-  SiReact,
-  SiSqlalchemy,
-  SiSqlite,
-  SiTailwindcss,
-  SiTypescript,
-  SiVercel,
-} from 'react-icons/si';
-import {
-  AnimatedContent,
-  Aurora,
-  Beams,
-  GradientText,
-  LogoLoop,
-  ScrollRevealText,
-  SpotlightCard,
-  StarBorder,
-  TextType,
-  Threads,
-} from '../components/reactbits/VisualEffects';
+﻿import React, { useEffect, useRef } from 'react';
+import { ArrowRight, Check, Network, Radio, Server, Sparkles, UsersRound } from 'lucide-react';
+import { SiFastapi, SiOpenai, SiPydantic, SiPython, SiReact, SiSqlalchemy, SiSqlite, SiVite } from 'react-icons/si';
+import LogoLoop from '../components/reactbits/LogoLoop';
 
-gsap.registerPlugin(ScrollTrigger);
-
-const proofMetrics = [
-  ['10', 'specialist agents'],
-  ['6', 'blueprint sections'],
-  ['Live', 'debate stream'],
-  ['Saved', 'session memory'],
+const agents = [
+  ['Research Agent', 'Market demand is visible, but the target segment is too broad.'],
+  ['Product Agent', 'The first version should solve one painful workflow only.'],
+  ['Finance Agent', 'The model works only if acquisition cost stays low.'],
+  ['MVP Guard Agent', 'Reject extra features. Keep the pilot narrow.'],
+  ['Consensus', 'Launch the narrow MVP, measure paid conversion, expand after proof.'],
 ];
 
-const previewMessages = [
-  ['Research', 'The market is promising, but the wedge needs sharper evidence.'],
-  ['Product', 'Start with one painful workflow and defer the nice-to-have suite.'],
-  ['Finance', 'Unit economics work only if acquisition stays inside the pilot channel.'],
-  ['Consensus', 'Launch the narrow MVP, measure paid conversion, then expand.'],
+const evidenceCards = [
+  ['ROOT COORDINATOR', 'One idea becomes a structured agent workflow.', 'The coordinator breaks the raw startup idea into research, product, technical, financial, UX, marketing, risk, and scope tasks.', '10', 'specialized agents'],
+  ['RESEARCH AGENT', 'Signals before opinions.', 'Pulls market, competitor, and customer assumptions before the debate begins.'],
+  ['DEBATE ENGINE', 'Specialists challenge each other.', 'Product, finance, technical, and risk agents expose tradeoffs instead of agreeing too early.'],
+  ['MVP SCOPE GUARD', 'Prevents the idea from becoming a full system.', 'Cuts non-essential features and protects the first build from scope creep.'],
+  ['REPORT GENERATOR', 'Blueprint, not transcript.', 'Converts the debate into an actionable MVP plan, architecture, roadmap, risks, and pitch direction.'],
+];
+
+const processSteps = [
+  ['Capture', 'Founder idea, target user, market hunch, or constraint enters the studio.'],
+  ['Research', 'External signals are gathered and summarized into the working context.'],
+  ['Debate', 'Specialist agents pressure-test feasibility, cost, channel, and risk.'],
+  ['Resolve', 'Consensus narrows the product wedge and the launch sequence.'],
+  ['Package', 'The blueprint becomes a structured founder-ready plan.'],
+];
+
+const stackItems = [
+  { name: 'React', icon: SiReact },
+  { name: 'Vite', icon: SiVite, tone: 'gold' },
+  { name: 'FastAPI', icon: SiFastapi, tone: 'green' },
+  { name: 'Python', icon: SiPython, tone: 'gold' },
+  { name: 'Pydantic', icon: SiPydantic, tone: 'red' },
+  { name: 'OpenAI SDK', icon: SiOpenai, tone: 'dark' },
+  { name: 'OpenRouter routing', icon: Network },
+  { name: 'Tavily Search API', icon: Sparkles, tone: 'green' },
+  { name: 'SQLAlchemy', icon: SiSqlalchemy, tone: 'red' },
+  { name: 'SQLite', icon: SiSqlite },
+  { name: 'SSE streaming', icon: Radio, tone: 'green' },
+  { name: 'REST API', icon: Server, tone: 'dark' },
+];
+
+const studioMessages = [
+  ['user', 'Build a B2B tool that turns customer calls into product roadmap evidence.'],
+  ['agent', 'Research sees a strong wedge if the first buyer is product ops, not founders.'],
+  ['agent', 'Finance flags sales cycle risk. Keep the pilot inside existing Slack workflows.'],
+  ['agent', 'Consensus: ship call ingestion, evidence tagging, and roadmap export first.'],
 ];
 
 const deliverables = [
-  ['Market research', Search],
-  ['Business model', CircleDollarSign],
-  ['Technical architecture', Network],
-  ['MVP roadmap', Layers3],
-  ['Risk assessment', ShieldCheck],
-  ['Investor pitch', FileText],
-];
-
-const systemFlow = [
-  'User',
-  'React / Next.js Frontend',
-  'FastAPI Backend',
-  'DynamicStreamingEngine',
-  ['Idea Understanding', 'Session Loading'],
-  'Root Coordinator',
-  'Research Planning',
-  'Research Agent',
-  'Specialist Selection',
-  'Sequential Round-table Debate',
-  'Consensus Generation',
-  'Blueprint Generation',
-  'SQLite Persistence',
-  'Streaming to Frontend',
-];
-
-function TechMark({ label, children }) {
-  return (
-    <span className="tech-mark" aria-hidden="true" title={label}>
-      {children}
-    </span>
-  );
-}
-
-const architectureTech = [
-  { title: 'React', node: <SiReact />, href: 'https://react.dev', tone: 'cyan' },
-  { title: 'TypeScript', node: <SiTypescript />, href: 'https://www.typescriptlang.org', tone: 'blue' },
-  { title: 'Tailwind CSS', node: <SiTailwindcss />, href: 'https://tailwindcss.com', tone: 'cyan' },
-  { title: 'FastAPI', node: <SiFastapi />, href: 'https://fastapi.tiangolo.com', tone: 'green' },
-  { title: 'CAMEL-AI', node: <TechMark label="CAMEL-AI">CA</TechMark>, href: 'https://www.camel-ai.org', tone: 'amber' },
-  { title: 'Configurable LLM Gateway', node: <TechMark label="Configurable LLM Gateway">LLM</TechMark>, tone: 'violet' },
-  { title: 'Model Registry', node: <TechMark label="Model Registry">MR</TechMark>, tone: 'blue' },
-  { title: 'SQLite', node: <SiSqlite />, href: 'https://www.sqlite.org', tone: 'blue' },
-  { title: 'SQLAlchemy', node: <SiSqlalchemy />, href: 'https://www.sqlalchemy.org', tone: 'red' },
-  { title: 'Tavily Search API', node: <Search />, href: 'https://tavily.com', tone: 'green' },
-  { title: 'Server-Sent Events (SSE)', node: <Radio />, tone: 'rose' },
-  { title: 'REST API', node: <Globe2 />, tone: 'violet' },
-  { title: 'Git', node: <SiGit />, href: 'https://git-scm.com', tone: 'red' },
-  { title: 'GitHub', node: <SiGithub />, href: 'https://github.com', tone: 'ink' },
-  { title: 'Railway', node: <SiRailway />, href: 'https://railway.app', tone: 'violet' },
-  { title: 'Vercel', node: <SiVercel />, href: 'https://vercel.com', tone: 'ink' },
+  ['01', 'Launch thesis', 'Market wedge, buyer profile, and the reason this idea deserves a narrow first launch.'],
+  ['02', 'Business model', 'Pricing logic, acquisition channel, and early unit economics.'],
+  ['03', 'MVP roadmap', 'First workflow, success metrics, and deferred scope.'],
+  ['04', 'Risk register', 'Operational, technical, and go-to-market risks before build.'],
+  ['05', 'Pitch inputs', 'Concise narrative points for problem, wedge, traction plan, and ask.'],
 ];
 
 function GenesisLogo() {
   return (
-    <a href="/" className="genesis-logo" aria-label="Genesis home">
-      <span className="genesis-logo-mark">G</span>
-      <span>Genesis</span>
+    <a href="/" className="gcp-logo" aria-label="Genesis home">
+      <span>G</span>
+      <strong>Genesis</strong>
     </a>
   );
 }
 
-function ProductPreview() {
+function AgentBoard() {
   return (
-    <StarBorder className="product-preview" aria-label="Genesis product preview">
-      <div className="preview-toolbar">
-        <div>
-          <span>Live Boardroom</span>
-          <strong>Startup Blueprint Studio</strong>
-        </div>
-        <span className="preview-status">
-          <span />
-          Reasoning
-        </span>
+    <aside className="gcp-agent-card" aria-label="Live agent boardroom preview">
+      <div className="gcp-agent-title">Live Agent Boardroom</div>
+      <div className="gcp-agent-feed">
+        {agents.map(([name, message]) => (
+          <article className={name === 'Consensus' ? 'gcp-agent-line is-consensus' : 'gcp-agent-line'} key={name}>
+            <strong>{name}</strong>
+            <p>{message}</p>
+          </article>
+        ))}
       </div>
-      <div className="preview-grid">
-        <div className="preview-feed">
-          {previewMessages.map(([role, message], index) => (
-            <article className={role === 'Consensus' ? 'preview-message consensus' : 'preview-message'} key={role}>
-              <span>{role}</span>
-              <p>{message}</p>
-              <small>0{index + 1}:2{index}</small>
-            </article>
-          ))}
-        </div>
-        <div className="preview-report">
-          <div className="preview-report-header">
-            <FileText size={16} />
-            <span>Blueprint Output</span>
-          </div>
-          <div className="preview-score">
-            <strong>87%</strong>
-            <span>Launch confidence</span>
-          </div>
-          {['Niche wedge selected', 'MVP scope contained', 'Supplier risk flagged'].map((item) => (
-            <div className="preview-check" key={item}>
-              <Check size={14} />
-              <span>{item}</span>
-            </div>
-          ))}
-        </div>
-      </div>
-    </StarBorder>
+    </aside>
   );
 }
 
-function FlowNode({ item, index }) {
-  const isBranch = Array.isArray(item);
+function MacDots() {
   return (
-    <div className={isBranch ? 'flow-row branch-row' : 'flow-row'}>
-      {isBranch ? (
-        <div className="flow-branch" aria-label="Parallel DynamicStreamingEngine work">
-          {item.map((branch) => (
-            <SpotlightCard as="article" className="flow-node branch-node" key={branch}>
-              <span>{branch}</span>
-            </SpotlightCard>
-          ))}
-        </div>
-      ) : (
-        <SpotlightCard as="article" className={`flow-node ${index === 0 ? 'flow-node-start' : ''}`}>
-          <small>{String(index + 1).padStart(2, '0')}</small>
-          <span>{item}</span>
-        </SpotlightCard>
-      )}
-      {index < systemFlow.length - 1 && <span className="flow-connector" aria-hidden="true" />}
+    <div className="gcp-mac-dots" aria-hidden="true">
+      <span />
+      <span />
+      <span />
     </div>
   );
 }
 
-function TechIconCard({ tech }) {
+function GradientText({ children, className = '' }) {
+  const letters = String(children).split('');
+
   return (
-    <SpotlightCard as="article" className={`tech-card ${tech.tone}`}>
-      <div className="tech-icon" aria-hidden="true">
-        {tech.node}
-      </div>
-      <span>{tech.title}</span>
-    </SpotlightCard>
+    <span className={("gcp-gradient-text " + className).trim()}>
+      <span aria-hidden="true">
+        {letters.map((letter, index) => (
+          <span className="gcp-brand-letter" style={{ '--i': index }} key={`${letter}-${index}`}>
+            {letter}
+          </span>
+        ))}
+      </span>
+      <span className="sr-only">{children}</span>
+    </span>
   );
 }
 
-function useLandingMotion() {
+function useLandingInteractions() {
   const rootRef = useRef(null);
 
   useEffect(() => {
-    const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-    const ctx = gsap.context(() => {
-      gsap.fromTo(
-        '.hero-reveal',
-        { autoAlpha: 0, y: reduceMotion ? 0 : 20 },
-        {
-          autoAlpha: 1,
-          y: 0,
-          duration: reduceMotion ? 0 : 0.64,
-          stagger: reduceMotion ? 0 : 0.07,
-          ease: 'power3.out',
-        }
-      );
+    const root = rootRef.current;
+    if (!root) return undefined;
 
-      gsap.utils.toArray('.reveal, .flow-row, .tech-card').forEach((element) => {
-        gsap.fromTo(
-          element,
-          { autoAlpha: 0, y: reduceMotion ? 0 : 24 },
-          {
-            autoAlpha: 1,
-            y: 0,
-            duration: reduceMotion ? 0 : 0.56,
-            ease: 'power3.out',
-            scrollTrigger: {
-              trigger: element,
-              start: 'top 86%',
-              toggleActions: 'play none none none',
-            },
-          }
-        );
+    const revealTargets = root.querySelectorAll('[data-reveal]');
+    const stack = root.querySelector('.gcp-artifact-stack');
+    const artifactCards = stack ? [...stack.querySelectorAll('.gcp-artifact-card')] : [];
+    let artifactTimer = null;
+    let activeArtifact = 0;
+    let wheelLock = false;
+
+    const setArtifactClasses = () => {
+      if (!stack) return;
+      stack.classList.add('is-interactive');
+      artifactCards.forEach((card, index) => {
+        const diff = (index - activeArtifact + artifactCards.length) % artifactCards.length;
+        card.classList.remove('is-active', 'is-prev', 'is-next', 'is-far-prev', 'is-far-next');
+        if (diff === 0) card.classList.add('is-active');
+        else if (diff === 1) card.classList.add('is-next');
+        else if (diff === artifactCards.length - 1) card.classList.add('is-prev');
+        else if (diff === 2) card.classList.add('is-far-next');
+        else card.classList.add('is-far-prev');
       });
+    };
 
-    }, rootRef);
+    const moveArtifact = (direction = 1) => {
+      if (!artifactCards.length) return;
+      activeArtifact = (activeArtifact + direction + artifactCards.length) % artifactCards.length;
+      setArtifactClasses();
+    };
 
-    return () => ctx.revert();
+
+    setArtifactClasses();
+
+    const revealObserver = new IntersectionObserver((entries) => {
+      entries.forEach((entry) => {
+        if (entry.isIntersecting) {
+          entry.target.classList.remove('is-visible');
+          void entry.target.offsetWidth;
+          entry.target.classList.add('is-visible');
+        } else {
+          entry.target.classList.remove('is-visible');
+        }
+      });
+    }, { threshold: 0.24 });
+
+    revealTargets.forEach((target) => revealObserver.observe(target));
+
+    const syncVisibleTargets = () => {
+      revealTargets.forEach((target) => {
+        const rect = target.getBoundingClientRect();
+        const visibleHeight = Math.min(rect.bottom, window.innerHeight) - Math.max(rect.top, 0);
+        if (visibleHeight > rect.height * 0.18) target.classList.add('is-visible');
+      });
+    };
+
+    window.setTimeout(syncVisibleTargets, 80);
+
+
+    const handleWheel = (event) => {
+      event.preventDefault();
+      if (wheelLock || Math.abs(event.deltaY) < 8) return;
+      moveArtifact(event.deltaY > 0 ? 1 : -1);
+      wheelLock = true;
+      window.setTimeout(() => { wheelLock = false; }, 430);
+    };
+
+    if (stack && artifactCards.length) stack.addEventListener('wheel', handleWheel, { passive: false });
+    if (stack && artifactCards.length) artifactTimer = window.setInterval(() => moveArtifact(1), 3200);
+
+    return () => {
+      revealObserver.disconnect();
+      if (stack) stack.removeEventListener('wheel', handleWheel);
+      if (artifactTimer) window.clearInterval(artifactTimer);
+    };
   }, []);
 
   return rootRef;
 }
 
+function WordReveal({ words, label }) {
+  return (
+    <h2 className="gcp-word-reveal" aria-label={label}>
+      {words.map((word, index) => (
+        <span style={{ '--i': index }} key={`${word}-${index}`}>{word}</span>
+      ))}
+    </h2>
+  );
+}
+
+function LetterRevealTitle({ children }) {
+  return (
+    <h2 className="gcp-letter-reveal" aria-label={children}>
+      {String(children).split('').map((letter, index) => (
+        <span
+          className={letter === ' ' ? 'is-space' : undefined}
+          style={{ '--i': index }}
+          aria-hidden="true"
+          key={`${letter}-${index}`}
+        >
+          {letter === ' ' ? '\u00a0' : letter}
+        </span>
+      ))}
+    </h2>
+  );
+}
+
 export default function LandingPage() {
-  const rootRef = useLandingMotion();
+  const rootRef = useLandingInteractions();
 
   return (
-    <div ref={rootRef} className="landing-page">
-      <Aurora />
-      <Beams />
-      <div className="antigravity-overlay">
-        <Threads
-          color={[0.26, 0.52, 0.96]}
-          amplitude={0.8}
-          distance={0.4}
-          enableMouseInteraction
-          lineCount={20}
-        />
-      </div>
-
-      <header className="landing-nav">
-        <div className="landing-nav-inner">
+    <div ref={rootRef} className="genesis-case-page">
+      <header className="gcp-nav">
+        <div className="gcp-shell gcp-nav-inner">
           <GenesisLogo />
-          <nav className="landing-nav-links" aria-label="Primary navigation">
-            <a href="#proof">Proof</a>
+          <nav className="gcp-links" aria-label="Primary navigation">
+            <a href="#evidence">Evidence</a>
             <a href="#process">Process</a>
-            <a href="#flow">Flow</a>
             <a href="#stack">Stack</a>
+            <a href="#studio">Studio</a>
             <a href="#deliverables">Deliverables</a>
-            <a className="btn btn-primary btn-small cursor-target" href="/chat">
-              Open Studio
-            </a>
+            <a className="gcp-btn gcp-btn-primary" href="/chat">Open Studio</a>
           </nav>
         </div>
       </header>
 
       <main>
-        <section className="landing-hero" id="top">
-          <div className="section-shell hero-grid">
-            <AnimatedContent className="hero-copy">
-              <p className="eyebrow-line hero-reveal">
-                <Sparkles size={15} />
-                AI Startup Boardroom
-              </p>
-              <GradientText as="h1" className="hero-title hero-reveal">
-                Genesis
-              </GradientText>
-              <p className="hero-subtitle hero-reveal">
-                Turn raw startup ideas into investor-ready blueprints through a live executive team
-                that researches, debates, narrows, and packages the decision.
-              </p>
-              <TextType
-                as="p"
-                className="hero-typed hero-reveal"
-                text={[
-                  'Researches market signals.',
-                  'Debates tradeoffs with specialist agents.',
-                  'Streams the blueprint as it forms.',
-                  'Saves session memory for the next decision.',
-                ]}
-                typingSpeed={42}
-                deletingSpeed={22}
-                pauseDuration={1450}
-                startOnVisible
-                textColors={['#2357b5', '#0b6d40', '#7a4fd8', '#9a6b00']}
-              />
-              <div className="hero-actions hero-reveal">
-                <a className="btn btn-primary cursor-target" href="/chat">
-                  Open Genesis
-                  <ArrowRight size={16} />
-                </a>
-                <a className="btn btn-secondary cursor-target" href="#process">
-                  View process
-                </a>
-              </div>
-            </AnimatedContent>
+        <section className="gcp-shell gcp-hero is-visible" id="top" data-reveal>
+          <div className="gcp-hero-copy">
+            <p className="gcp-eyebrow">AI Startup Boardroom</p>
+            <h1 className="gcp-hero-title">
+              <GradientText className="gcp-brand-gradient">Genesis</GradientText>
+              <small>turns ideas into investable plans.</small>
+            </h1>
+            <p className="gcp-subtitle">A live executive team researches the market, debates the tradeoffs, and assembles a founder-ready blueprint without turning the page into a dense dashboard.</p>
+            <div className="gcp-proof">
+              <div><strong>10</strong><span>specialist agents</span></div>
+              <div><strong>6</strong><span>blueprint sections</span></div>
+              <div><strong>Live</strong><span>debate stream</span></div>
+            </div>
+            <div className="gcp-actions">
+              <a className="gcp-btn gcp-btn-primary" href="/chat">Open Genesis <ArrowRight size={16} /></a>
+              <a className="gcp-btn gcp-btn-secondary" href="#process">View process</a>
+            </div>
+          </div>
+          <AgentBoard />
+        </section>
 
-            <ProductPreview />
+        <section className="gcp-shell gcp-section gcp-band gcp-evidence" id="evidence" data-reveal>
+          <div className="gcp-section-head"><p className="gcp-eyebrow">Agent Society</p><h2>A startup boardroom powered by specialized agents.</h2><p>Genesis does not generate a generic answer. It assigns the idea to a team of agents that research, challenge, negotiate, and turn the final decision into an MVP blueprint.</p></div>
+          <div className="gcp-signals">
+            {evidenceCards.map(([label, title, body, metric, caption], index) => <article className={index === 0 ? 'gcp-signal is-featured' : 'gcp-signal'} key={label}><span>{label}</span><h3>{title}</h3><p>{body}</p>{index === 0 && <strong>{metric}<small>{caption}</small></strong>}</article>)}
           </div>
         </section>
 
-        <section id="proof" className="landing-section proof-band">
-          <div className="section-shell proof-grid reveal">
-            {proofMetrics.map(([value, label]) => (
-              <SpotlightCard as="article" className="proof-card" key={label}>
-                <strong>{value}</strong>
-                <span>{label}</span>
-              </SpotlightCard>
+        <section className="gcp-shell gcp-section gcp-band gcp-process" id="process">
+          <div className="gcp-section-head" data-reveal><p className="gcp-eyebrow">Operating model</p><WordReveal words={['The', 'system', 'feels', 'more', 'like', 'a', 'boardroom', 'than', 'a', 'chatbot.']} label="The system feels more like a boardroom than a chatbot." /></div>
+          <div className="gcp-process-line" aria-label="Genesis process from capture to package">
+            {processSteps.map(([title, body], index) => (
+              <article className="gcp-process-node" key={title}>
+                <div>{index + 1}</div>
+                <strong>{title}</strong>
+                <p>{body}</p>
+              </article>
             ))}
           </div>
         </section>
 
-        <section id="process" className="landing-section">
-          <div className="section-shell split-section">
-            <div className="section-heading reveal">
-              <p className="eyebrow-line">Workflow</p>
-              <ScrollRevealText as="h2">From instinct to evidence to a decision you can act on.</ScrollRevealText>
-              <p>
-                Genesis keeps the work legible: the prompt, research evidence, agent debate, final
-                tradeoffs, and blueprint sections stay connected.
-              </p>
+        <section className="gcp-shell gcp-section gcp-band gcp-stack" id="stack" data-reveal>
+          <div className="gcp-stack-head">
+            <div>
+              <p className="gcp-eyebrow">Technical stack</p>
+              <LetterRevealTitle>The stack behind the boardroom.</LetterRevealTitle>
             </div>
-            <div className="process-list reveal">
-              {[
-                ['Capture idea', 'Start with the market, user, constraint, or product seed.'],
-                ['Research market', 'Gather external signals and pressure-test assumptions.'],
-                ['Debate tradeoffs', 'Let specialist agents challenge the plan from their lens.'],
-                ['Package blueprint', 'Resolve into business, MVP, technical, financial, and action sections.'],
-              ].map(([title, body], index) => (
-                <SpotlightCard as="article" className="process-step" key={title}>
-                  <span>{index + 1}</span>
-                  <div>
-                    <h3>{title}</h3>
-                    <p>{body}</p>
-                  </div>
-                </SpotlightCard>
-              ))}
-            </div>
+            <p>Frontend, orchestration, model routing, persistence, research, streaming, and deployment tools share the same blueprint pipeline.</p>
+          </div>
+          <div className="gcp-stack-loop">
+            <LogoLoop items={stackItems} speed={38} ariaLabel="Genesis technology stack" />
           </div>
         </section>
 
-        <section id="flow" className="landing-section flow-section">
-          <div className="section-shell">
-            <div className="section-heading reveal">
-              <p className="eyebrow-line">System Flow</p>
-              <h2>The full path from prompt to streamed blueprint.</h2>
-              <p>
-                The experience stays legible from the first user idea through backend orchestration,
-                specialist debate, persistence, and live frontend streaming.
-              </p>
-            </div>
-            <div className="system-flow" aria-label="Genesis system architecture flow">
-              {systemFlow.map((item, index) => (
-                <FlowNode item={item} index={index} key={Array.isArray(item) ? item.join('-') : item} />
-              ))}
-            </div>
+        <section className="gcp-shell gcp-section gcp-studio" id="studio" data-reveal>
+          <div className="gcp-section-head"><p className="gcp-eyebrow">Studio surface</p><WordReveal words={['A', 'product', 'screen', 'with', 'breathing', 'room,', 'not', 'a', 'cockpit.']} label="A product screen with breathing room, not a cockpit." /></div>
+          <div className="gcp-studio-wrap">
+            <aside className="gcp-session-rail"><div className="gcp-rail-title"><span>G</span><strong>Sessions</strong></div><article><strong>New blueprint</strong><p>Fresh strategy run for one startup idea.</p></article><article><strong>Saved sessions</strong><p>Past blueprints return as working memory.</p></article><article><strong>Investor pass</strong><p>Sections can be tightened for pitch review.</p></article></aside>
+            <div className="gcp-workspace"><div className="gcp-workspace-top"><div><span>Genesis boardroom</span><h3>Startup Blueprint Studio</h3></div><em>Backend connects in live app</em></div><div className="gcp-workspace-grid"><div className="gcp-conversation"><span>Debate feed</span><div className="gcp-chat-stream"><div className="gcp-typing" aria-hidden="true"><i /><i /><i /></div>{studioMessages.map(([type, text], index) => <p className={type === 'user' ? 'gcp-bubble is-user' : 'gcp-bubble'} style={{ '--i': index }} key={text}>{text}</p>)}</div></div><aside className="gcp-blueprint-panel"><span>Blueprint preview</span><h3>Generated sections</h3>{['Market wedge and buyer profile', 'MVP scope and deferred features', 'Technical architecture outline', 'Risk register and next actions'].map((item) => <p key={item}><Check size={15} />{item}</p>)}</aside></div><div className="gcp-composer"><span>Try: pressure-test my MVP and produce a launch blueprint</span><a className="gcp-btn gcp-btn-primary" href="/chat">Generate</a></div></div>
           </div>
         </section>
 
-        <section id="stack" className="landing-section tech-section">
-          <div className="section-shell">
-            <div className="section-heading reveal">
-              <p className="eyebrow-line">Architecture Technologies</p>
-              <h2>The stack behind the boardroom.</h2>
-              <p>
-                Frontend, orchestration, model routing, persistence, research, streaming, and deployment
-                tools share the same blueprint pipeline.
-              </p>
-            </div>
-            <StarBorder className="tech-loop-frame reveal">
-              <LogoLoop
-                logos={architectureTech}
-                speed={92}
-                logoHeight={34}
-                gap={30}
-                fadeOutColor="rgba(255, 253, 249, 0.96)"
-                ariaLabel="Genesis architecture technology stack"
-              />
-            </StarBorder>
-            <div className="tech-grid reveal">
-              {architectureTech.map((tech) => (
-                <TechIconCard tech={tech} key={tech.title} />
-              ))}
-            </div>
-          </div>
+        <section className="gcp-shell gcp-section gcp-band gcp-deliverables" id="deliverables" data-reveal>
+          <div className="gcp-deliverable-intro"><div><p className="gcp-eyebrow">Founder package</p><p>Genesis turns the discussion into a focused set of founder-ready artifacts. The center card becomes the active deliverable, while the other cards wait behind it like a polished review stack.</p></div><WordReveal words={['Everything', 'a', 'founder', 'needs', 'after', 'the', 'debate', 'ends.']} label="Everything a founder needs after the debate ends." /></div>
+          <div className="gcp-artifact-stack" aria-label="Founder package carousel">{deliverables.map(([num, title, body]) => <article className="gcp-artifact-card" key={num}><MacDots /><span>{num}</span><strong>{title}</strong><p>{body}</p></article>)}</div>
         </section>
 
-        <section id="deliverables" className="landing-section">
-          <div className="section-shell">
-            <div className="section-heading reveal">
-              <p className="eyebrow-line">Deliverables</p>
-              <h2>A founder-ready package from every run.</h2>
-            </div>
-            <div className="deliverable-grid reveal">
-              {deliverables.map(([item, Icon]) => (
-                <SpotlightCard as="article" className="deliverable-card" key={item}>
-                  <Icon size={19} />
-                  <span>{item}</span>
-                </SpotlightCard>
-              ))}
-            </div>
-          </div>
-        </section>
-
-        <section className="landing-section final-cta">
-          <div className="section-shell reveal">
-            <BrainCircuit size={34} />
-            <h2>Bring one idea. Leave with a sharper company.</h2>
-            <p>Genesis is built for founders who want pressure-tested thinking, not another blank page.</p>
-            <a className="btn btn-primary cursor-target" href="/chat">
-              Open Studio
-              <UsersRound size={16} />
-            </a>
-          </div>
-        </section>
+        <section className="gcp-shell gcp-section gcp-final"><Sparkles size={28} /><h2>Bring one idea. Leave with a sharper company.</h2><p>Genesis is built for founders who want pressure-tested thinking, not another blank page.</p><a className="gcp-btn gcp-btn-primary" href="/chat">Open Studio <UsersRound size={16} /></a></section>
       </main>
     </div>
   );

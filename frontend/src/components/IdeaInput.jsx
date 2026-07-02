@@ -1,19 +1,15 @@
 import React from 'react';
 import {
   Bot,
-  Compass,
-  Image,
   Loader2,
-  Mic,
-  Plus,
   RotateCcw,
   Send,
-  Sparkles,
 } from 'lucide-react';
-const PROMPT_SUGGESTIONS = [
-  'Create an investor-ready plan',
-  'Pressure-test my MVP',
-  'Research go-to-market risks',
+
+const quickPrompts = [
+  'pressure-test my MVP',
+  'research go-to-market risks',
+  'create an investor-ready plan',
 ];
 
 export default function IdeaInput({
@@ -37,26 +33,7 @@ export default function IdeaInput({
 
   return (
     <form className="composer-shell" onSubmit={handleSubmit}>
-      <div className="composer-suggestions" aria-label="Prompt suggestions">
-        {PROMPT_SUGGESTIONS.map((suggestion) => (
-          <button
-            key={suggestion}
-            type="button"
-            className="quick-chip"
-            onClick={() => setIdea(suggestion)}
-            disabled={streamActive}
-          >
-            <Sparkles size={14} />
-            {suggestion}
-          </button>
-        ))}
-      </div>
-
       <div className="composer-card">
-        <button type="button" className="composer-icon-button" aria-label="Attach context" disabled={streamActive}>
-          <Plus size={21} />
-        </button>
-
         <label className="sr-only" htmlFor="idea-input">
           {currentChatId ? 'Refine this blueprint' : 'Ask Genesis anything'}
         </label>
@@ -88,16 +65,7 @@ export default function IdeaInput({
               : connectionState === 'checking'
                 ? 'Checking'
                 : 'Offline'}
-          </span>
-          <button type="button" className="composer-tool" aria-label="Create an image" disabled>
-            <Image size={18} />
-          </button>
-          <button type="button" className="composer-tool" aria-label="Research mode" disabled>
-            <Compass size={18} />
-          </button>
-          <button type="button" className="composer-tool" aria-label="Voice input" disabled>
-            <Mic size={18} />
-          </button>
+          </span>
           <button
             type="submit"
             className="composer-send"
@@ -109,10 +77,26 @@ export default function IdeaInput({
         </div>
       </div>
 
+      {!currentChatId && (
+        <div className="composer-suggestions" aria-label="Try prompts">
+          {quickPrompts.map((prompt) => (
+            <button
+              type="button"
+              className="quick-chip"
+              onClick={() => setIdea(prompt)}
+              disabled={streamActive}
+              key={prompt}
+            >
+              Try: {prompt}
+            </button>
+          ))}
+        </div>
+      )}
+
       <div className="composer-meta">
         <button type="button" className="reset-link" onClick={onReset} disabled={streamActive}>
           <RotateCcw size={14} />
-          Reset
+          Clear input
         </button>
         <span>
           {currentPhase ? (

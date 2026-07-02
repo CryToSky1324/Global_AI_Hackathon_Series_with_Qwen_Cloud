@@ -1,28 +1,26 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import SessionSidebar from '../components/SessionSidebar';
 import IdeaInput from '../components/IdeaInput';
 import AgentStatus from '../components/AgentStatus';
 import DebateFeed from '../components/DebateFeed';
-import { BLUEPRINT_SECTIONS, countGeneratedSections, mergeBlueprintSection } from '../utils/blueprintSections';
+import { countGeneratedSections, mergeBlueprintSection } from '../utils/blueprintSections';
 import {
   API_BACKEND_HINT,
   API_CONNECTION_LABEL,
   deleteSession as deleteSessionRequest,
   getSession,
   healthCheck,
-  isSessionNotFoundError,
   listSessions,
   streamSimulation,
 } from '../services/api';
-import { AlertCircle, ArrowLeft, CheckCircle2, FileText, RefreshCw, Sparkles, Trash2, UsersRound, X } from 'lucide-react';
+import { AlertCircle, CheckCircle2, FileText, PanelLeftClose, PanelLeftOpen, RefreshCw, Sparkles, Trash2, UsersRound, X } from 'lucide-react';
 import {
   AnimatedContent,
   Aurora,
   Beams,
-  GradientText,
+  LightRays,
   ShapeGrid,
   StarBorder,
-  TextType,
 } from '../components/reactbits/VisualEffects';
 
 const HIDDEN_EVENT_TYPES = new Set([
@@ -33,7 +31,9 @@ const HIDDEN_EVENT_TYPES = new Set([
   'blueprint_update',
   'session_created',
   'session_loaded',
+  'session_saved',
   'impact_assessment',
+  'agent_selection',
   'round_started',
   'debate_needs_more',
 ]);
@@ -51,66 +51,15 @@ function isUserFacingEvent(event) {
   return Boolean(event.type || content);
 }
 
-function eventContentSignature(content) {
-  if (content === undefined || content === null) return '';
-  if (typeof content === 'string') return content;
-  try {
-    return JSON.stringify(content);
-  } catch (error) {
-    return String(content);
+function createClientMessageId() {
+  if (window.crypto?.randomUUID) {
+    return window.crypto.randomUUID();
   }
+  return `msg:${Date.now()}:${Math.random().toString(36).slice(2)}`;
 }
 
-function eventIdentity(event) {
-  if (event?.id) return `id:${event.id}`;
-  if (event?.sequence !== undefined && event?.sequence !== null) {
-    return `sequence:${event.run_id || event.chat_id || 'run'}:${event.sequence}`;
-  }
-  if (event?.streamingKey) return `stream:${event.streamingKey}`;
-  if (event?.client_message_id) return `client:${event.client_message_id}`;
-  if (event?.type === 'user_input') {
-    return `user:${eventContentSignature(event.content)}`;
-  }
-  return [
-    'fallback',
-    event?.type || 'event',
-    event?.agent || '',
-    event?.phase || '',
-    event?.timestamp || '',
-    eventContentSignature(event?.content),
-  ].join(':');
-}
-
-function dedupeEvents(eventList) {
-  const positions = new Map();
-  const deduped = [];
-
-  eventList.forEach((event) => {
-    const key = eventIdentity(event);
-    const position = positions.get(key);
-    if (position === undefined) {
-      positions.set(key, deduped.length);
-      deduped.push(event);
-      return;
-    }
-    deduped[position] = event;
-  });
-
-  return deduped;
-}
-
-function chatIdFromLocation() {
-  const match = window.location.pathname.match(/^\/chat\/([^/]+)\/?$/);
-  return match ? decodeURIComponent(match[1]) : null;
-}
-
-function chatPath(chatId) {
-  return chatId ? `/chat/${encodeURIComponent(chatId)}` : '/chat';
-}
-
-function newRequestId(prefix) {
-  if (window.crypto?.randomUUID) return `${prefix}-${window.crypto.randomUUID()}`;
-  return `${prefix}-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+function isLocalChatId(chatId) {
+  return String(chatId || '').startsWith('local:');
 }
 
 export default function Dashboard({ initialChatId = null }) {
@@ -122,17 +71,17 @@ export default function Dashboard({ initialChatId = null }) {
   const [streamActive, setStreamActive] = useState(false);
   const [currentPhase, setCurrentPhase] = useState(null);
   const [activeAgent, setActiveAgent] = useState(null);
+  const [, setCurrentRunId] = useState(null);
   const [events, setEvents] = useState([]);
 
   const [connectionState, setConnectionState] = useState('checking');
   const [connectionMessage, setConnectionMessage] = useState('');
   const [sessionPendingDelete, setSessionPendingDelete] = useState(null);
   const [toastMessage, setToastMessage] = useState('');
-  const activeStreamRef = useRef(null);
-  const activeRunRef = useRef(null);
-  const currentChatIdRef = useRef(null);
+  const [sidebarHidden, setSidebarHidden] = useState(false);
+  const [connectionBannerHidden, setConnectionBannerHidden] = useState(false);
 
-  const visibleEvents = dedupeEvents(events.filter(isUserFacingEvent));
+  const visibleEvents = events.filter(isUserFacingEvent);
   const generatedSectionCount = countGeneratedSections(sessionDetails);
   const hasConversation = visibleEvents.length > 0 || Boolean(sessionDetails);
 
@@ -140,78 +89,19 @@ export default function Dashboard({ initialChatId = null }) {
     initializeConnection();
   }, [initialChatId]);
 
-  useEffect(() => {
-    currentChatIdRef.current = currentChatId;
-  }, [currentChatId]);
-
-  useEffect(() => {
-    return () => {
-      abortActiveStream();
-    };
-  }, []);
-
-  useEffect(() => {
-    const handlePopState = () => {
-      const chatId = chatIdFromLocation();
-      if (chatId) {
-        handleSelectSession(chatId, { updateUrl: false });
-        return;
-      }
-      clearConversationState({ updateUrl: false });
-    };
-    window.addEventListener('popstate', handlePopState);
-    return () => window.removeEventListener('popstate', handlePopState);
-  }, [streamActive]);
-
   const initializeConnection = async () => {
     const connected = await checkHealth();
     if (connected) {
       await loadSessionsList();
-      const urlChatId = initialChatId || chatIdFromLocation();
-      if (urlChatId) {
-        await handleSelectSession(urlChatId, { updateUrl: false });
+      if (initialChatId) {
+        await handleSelectSession(initialChatId);
       }
     }
   };
 
-  const navigateChat = (chatId, { replace = false } = {}) => {
-    const path = chatPath(chatId);
-    if (window.location.pathname === path) return;
-    window.history[replace ? 'replaceState' : 'pushState']({}, '', path);
-  };
-
-  const abortActiveStream = () => {
-    if (activeStreamRef.current?.controller) {
-      activeStreamRef.current.controller.abort();
-    }
-    activeStreamRef.current = null;
-    activeRunRef.current = null;
-  };
-
-  const clearConversationState = ({ updateUrl = true, replaceUrl = false } = {}) => {
-    abortActiveStream();
-    currentChatIdRef.current = null;
-    setCurrentChatId(null);
-    setSessionDetails(null);
-    setIdea('');
-    setEvents([]);
-    setCurrentPhase(null);
-    setActiveAgent(null);
-    setStreamActive(false);
-    if (updateUrl) {
-      navigateChat(null, { replace: replaceUrl });
-    }
-  };
-
-  const recoverFromMissingSession = async () => {
-    clearConversationState({ updateUrl: true, replaceUrl: true });
-    setConnectionState('connected');
-    setConnectionMessage('');
-    await loadSessionsList();
-  };
-
   const checkHealth = async () => {
     setConnectionState('checking');
+    setConnectionBannerHidden(false);
     try {
       await healthCheck();
       setConnectionState('connected');
@@ -219,6 +109,7 @@ export default function Dashboard({ initialChatId = null }) {
       return true;
     } catch (e) {
       setConnectionState('offline');
+      setConnectionBannerHidden(false);
       setConnectionMessage(
         `Backend is not reachable. Start it on ${API_BACKEND_HINT} or set VITE_USE_DIRECT_API=true with VITE_API_BASE_URL.`
       );
@@ -233,26 +124,24 @@ export default function Dashboard({ initialChatId = null }) {
     } catch (error) {
       console.error('Failed to load sessions:', error);
       setConnectionState((state) => (state === 'connected' ? 'request-failed' : state));
+      setConnectionBannerHidden(false);
       setConnectionMessage(`Saved sessions could not be loaded: ${error.message}`);
     }
   };
 
-  const handleSelectSession = async (chatId, { updateUrl = true, replaceUrl = false } = {}) => {
-    if (streamActive) {
-      abortActiveStream();
-      setStreamActive(false);
+  const handleSelectSession = async (chatId) => {
+    if (streamActive) return;
+    if (isLocalChatId(chatId)) {
+      setCurrentChatId(chatId);
+      return;
     }
     try {
-      const details = await getSession(chatId);
-      currentChatIdRef.current = chatId;
       setCurrentChatId(chatId);
+      const details = await getSession(chatId);
       setSessionDetails(details);
       setIdea('');
-      if (updateUrl) {
-        navigateChat(chatId, { replace: replaceUrl });
-      }
 
-      const hydratedEvents = dedupeEvents(hydrateSessionEvents(details).filter(isUserFacingEvent));
+      const hydratedEvents = hydrateSessionEvents(details).filter(isUserFacingEvent);
       setEvents(
         hydratedEvents.length > 0
           ? hydratedEvents
@@ -268,20 +157,17 @@ export default function Dashboard({ initialChatId = null }) {
       setActiveAgent(null);
     } catch (error) {
       console.error('Error loading session details:', error);
-      if (isSessionNotFoundError(error)) {
-        await recoverFromMissingSession();
-        return;
-      }
       setConnectionState('request-failed');
+      setConnectionBannerHidden(false);
       setConnectionMessage(`Session details could not be loaded: ${error.message}`);
-      setEvents((prev) => dedupeEvents([
+      setEvents((prev) => [
         ...prev,
         {
           type: 'error',
           content: `Failed to load session details: ${error.message}`,
           timestamp: Date.now() / 1000,
         },
-      ]));
+      ]);
     }
   };
 
@@ -304,11 +190,17 @@ export default function Dashboard({ initialChatId = null }) {
       setToastMessage('Session deleted');
       window.setTimeout(() => setToastMessage(''), 2400);
       if (currentChatId === chatId) {
-        clearConversationState({ updateUrl: true, replaceUrl: true });
+        setCurrentChatId(null);
+        setSessionDetails(null);
+        setIdea('');
+        setEvents([]);
+        setCurrentPhase(null);
+        setActiveAgent(null);
       }
     } catch (error) {
       console.error('Failed to delete session:', error);
       setConnectionState('request-failed');
+      setConnectionBannerHidden(false);
       setConnectionMessage(`Session could not be deleted: ${error.message}`);
       setSessionPendingDelete(null);
     }
@@ -318,17 +210,52 @@ export default function Dashboard({ initialChatId = null }) {
     if (!idea.trim() || streamActive) return;
 
     const promptMessage = idea.trim();
-    const runId = newRequestId('run');
-    const clientMessageId = newRequestId('message');
-    const controller = new AbortController();
-    const startingChatId = currentChatId;
-    activeStreamRef.current = { controller, runId, chatId: startingChatId };
-    activeRunRef.current = runId;
+    const optimisticChatId = currentChatId || `local:${Date.now()}`;
+    const clientMessageId = createClientMessageId();
+    let resolvedChatId = currentChatId && !isLocalChatId(currentChatId) ? currentChatId : null;
+    let resolvedRunId = null;
+
+    const adoptStreamIdentity = (event) => {
+      if (event.run_id && event.run_id !== resolvedRunId) {
+        resolvedRunId = event.run_id;
+        setCurrentRunId(event.run_id);
+      }
+
+      if (!event.chat_id || isLocalChatId(event.chat_id)) return;
+      if (resolvedChatId === event.chat_id) return;
+
+      resolvedChatId = event.chat_id;
+      setCurrentChatId(event.chat_id);
+      setSessions((prev) => prev.filter((session) => (session.id || session.chat_id) !== optimisticChatId));
+      setSessionDetails((prev) => ({
+        ...(prev || {}),
+        id: event.chat_id,
+        chat_id: event.chat_id,
+        title: prev?.title || promptMessage,
+        user_idea: prev?.user_idea || promptMessage,
+      }));
+    };
+
+    if (!currentChatId) {
+      setCurrentChatId(optimisticChatId);
+      setSessions((prev) => [
+        {
+          id: optimisticChatId,
+          chat_id: optimisticChatId,
+          title: promptMessage.length > 48 ? `${promptMessage.slice(0, 48)}...` : promptMessage,
+          updated_at: Date.now() / 1000,
+          local_only: true,
+        },
+        ...prev.filter((session) => (session.id || session.chat_id) !== optimisticChatId),
+      ]);
+    }
     setStreamActive(true);
     setCurrentPhase('Initializing');
     setActiveAgent(null);
+    setCurrentRunId(null);
     setEvents([
       {
+        id: clientMessageId,
         type: 'user_input',
         agent: 'User',
         content: promptMessage,
@@ -346,24 +273,13 @@ export default function Dashboard({ initialChatId = null }) {
 
     await streamSimulation({
       message: promptMessage,
-      chatId: startingChatId,
-      runId,
+      chatId: resolvedChatId,
       clientMessageId,
-      signal: controller.signal,
+      runId: resolvedRunId,
       onEvent: (event) => {
-        if (activeRunRef.current !== runId) return;
-        if (event.run_id && event.run_id !== runId) return;
-        const activeChat = activeStreamRef.current?.chatId;
-        if (activeChat && event.chat_id && event.chat_id !== activeChat) return;
+        adoptStreamIdentity(event);
 
         if (event.type === 'session_created' && event.chat_id) {
-          activeStreamRef.current = {
-            ...activeStreamRef.current,
-            chatId: event.chat_id,
-          };
-          currentChatIdRef.current = event.chat_id;
-          setCurrentChatId(event.chat_id);
-          navigateChat(event.chat_id, { replace: true });
           loadSessionsList();
         }
 
@@ -389,62 +305,46 @@ export default function Dashboard({ initialChatId = null }) {
           return;
         }
 
-        setEvents((prev) => dedupeEvents([...prev, event]));
+        setEvents((prev) => [...prev, event]);
 
         if (event.type === 'session_saved' && event.chat_id) {
-          fetchUpdatedSession(event.chat_id, { hydrateEvents: true });
+          fetchUpdatedSession(event.chat_id);
         }
       },
-      onError: async (err) => {
-        if (activeRunRef.current !== runId) return;
-        if (isSessionNotFoundError(err)) {
-          await recoverFromMissingSession();
-          return;
-        }
-        setEvents((prev) => dedupeEvents([
+      onError: (err) => {
+        setEvents((prev) => [
           ...prev,
           {
             type: 'error',
             content: `Simulation failed: ${err.message}`,
             timestamp: Date.now() / 1000,
           },
-        ]));
+        ]);
         setConnectionState('request-failed');
+        setConnectionBannerHidden(false);
         setConnectionMessage(`The stream request failed: ${err.message}`);
         setStreamActive(false);
         setCurrentPhase('Failed');
         setActiveAgent(null);
-        activeStreamRef.current = null;
-        activeRunRef.current = null;
       },
       onDone: () => {
-        if (activeRunRef.current !== runId) return;
         setStreamActive(false);
         setCurrentPhase('Complete');
         setActiveAgent(null);
-        activeStreamRef.current = null;
-        activeRunRef.current = null;
+        if (resolvedChatId) {
+          fetchUpdatedSession(resolvedChatId);
+        }
         loadSessionsList();
       },
     });
   };
 
-  const fetchUpdatedSession = async (chatId, { hydrateEvents = false } = {}) => {
+  const fetchUpdatedSession = async (chatId) => {
     try {
       const details = await getSession(chatId);
-      if (currentChatIdRef.current !== chatId) return;
       setSessionDetails(details);
-      if (hydrateEvents) {
-        const hydratedEvents = dedupeEvents(hydrateSessionEvents(details).filter(isUserFacingEvent));
-        if (hydratedEvents.length > 0) {
-          setEvents(hydratedEvents);
-        }
-      }
     } catch (e) {
       console.error('Error fetching completed session details:', e);
-      if (isSessionNotFoundError(e)) {
-        recoverFromMissingSession();
-      }
     }
   };
 
@@ -480,10 +380,10 @@ export default function Dashboard({ initialChatId = null }) {
       streamingKey: key,
     };
     const index = prev.findIndex((item) => item.streamingKey === key);
-    if (index < 0) return dedupeEvents([...prev, nextEvent]);
+    if (index < 0) return [...prev, nextEvent];
     const next = [...prev];
     next[index] = { ...next[index], ...nextEvent };
-    return dedupeEvents(next);
+    return next;
   };
 
   const finalizeStreamingAgentEvent = (prev, event) => {
@@ -494,14 +394,26 @@ export default function Dashboard({ initialChatId = null }) {
       streamingKey: key,
     };
     const index = prev.findIndex((item) => item.streamingKey === key);
-    if (index < 0) return dedupeEvents([...prev, finalEvent]);
+    if (index < 0) return [...prev, finalEvent];
     const next = [...prev];
     next[index] = finalEvent;
-    return dedupeEvents(next);
+    return next;
+  };
+
+  const handleNewChat = () => {
+    if (streamActive) return;
+    setCurrentChatId(null);
+    setSessionDetails(null);
+    setIdea('');
+    setEvents([]);
+    setCurrentPhase(null);
+    setActiveAgent(null);
+    setCurrentRunId(null);
   };
 
   const handleReset = () => {
-    clearConversationState({ updateUrl: true, replaceUrl: false });
+    if (streamActive) return;
+    setIdea('');
   };
 
   const hydrateSessionEvents = (details) => {
@@ -543,9 +455,10 @@ export default function Dashboard({ initialChatId = null }) {
   };
 
   return (
-    <div className="genesis-app">
+    <div className={("genesis-app " + (sidebarHidden ? "sidebar-is-hidden" : "")).trim()}>
       <Aurora />
       <Beams />
+      <LightRays />
       <div className="antigravity-overlay">
         <ShapeGrid
           direction="diagonal"
@@ -557,40 +470,58 @@ export default function Dashboard({ initialChatId = null }) {
           hoverTrailAmount={6}
         />
       </div>
-      <SessionSidebar
-        sessions={sessions}
-        currentChatId={currentChatId}
-        onSelectSession={handleSelectSession}
-        onDeleteSession={handleRequestDeleteSession}
-        streamActive={streamActive}
-      />
+      {!sidebarHidden && (
+        <SessionSidebar
+          sessions={sessions}
+          currentChatId={currentChatId}
+          onSelectSession={handleSelectSession}
+          onDeleteSession={handleRequestDeleteSession}
+          onNewChat={handleNewChat}
+          onHideSidebar={() => setSidebarHidden(true)}
+          streamActive={streamActive}
+        />
+      )}
 
       <main className={`chat-shell ${hasConversation ? 'has-conversation' : 'is-empty'}`}>
         <header className="chat-topbar">
           <div className="chat-brand">
-            <a href="/" className="back-link cursor-target" aria-label="Back to Genesis landing">
-              <ArrowLeft size={17} />
-            </a>
             <div>
-              <span>
-                <Sparkles size={14} />
-                Genesis Boardroom
-              </span>
-              <h1>Startup Blueprint Studio</h1>
+              <h1>Genesis Studio</h1>
             </div>
-          </div>
-          <div className="connection-cluster">
-            {renderStatus()}
-            <code>{API_CONNECTION_LABEL}</code>
           </div>
         </header>
 
-        {connectionState !== 'connected' && (
+        {sidebarHidden ? (
+          <button
+            type="button"
+            className="sidebar-canvas-toggle show-sidebar-button"
+            onClick={() => setSidebarHidden(false)}
+            aria-label="Show sidebar"
+            title="Show sidebar"
+          >
+            <PanelLeftOpen size={16} />
+          </button>
+        ) : (
+          <button
+            type="button"
+            className="sidebar-canvas-toggle hide-sidebar-button"
+            onClick={() => setSidebarHidden(true)}
+            aria-label="Hide sidebar"
+            title="Hide sidebar"
+          >
+            <PanelLeftClose size={16} />
+          </button>
+        )}
+
+        {connectionState !== 'connected' && !connectionBannerHidden && (
           <StarBorder className="connection-banner" role="status">
             <AlertCircle size={17} />
             <span>{connectionMessage || 'Checking the backend connection...'}</span>
             <button type="button" onClick={initializeConnection}>
               Retry
+            </button>
+            <button type="button" className="connection-dismiss" onClick={() => setConnectionBannerHidden(true)} aria-label="Dismiss message">
+              <X size={16} />
             </button>
           </StarBorder>
         )}
@@ -598,26 +529,11 @@ export default function Dashboard({ initialChatId = null }) {
         <section className="chat-stage">
           {!hasConversation ? (
             <AnimatedContent className="empty-state">
-              <p className="eyebrow-line">Gemini-inspired startup intelligence</p>
-              <GradientText as="h2">Ready when you are.</GradientText>
+              <h2>Ready when you are.</h2>
               <p>
                 Bring a raw startup idea and Genesis will convene research, product, finance, technical,
                 market, risk, and MVP voices into one decision-ready blueprint.
               </p>
-              <TextType
-                as="p"
-                className="empty-state-typed"
-                text={[
-                  'Try: pressure-test my MVP.',
-                  'Try: research go-to-market risks.',
-                  'Try: create an investor-ready plan.',
-                ]}
-                typingSpeed={44}
-                deletingSpeed={22}
-                pauseDuration={1400}
-                startOnVisible
-                textColors={['#2357b5', '#0b6d40', '#7a4fd8']}
-              />
             </AnimatedContent>
           ) : (
             <div className="active-workspace">
@@ -633,11 +549,7 @@ export default function Dashboard({ initialChatId = null }) {
                     <a className="btn btn-secondary btn-small cursor-target" href={`/chat/${encodeURIComponent(currentChatId)}/blueprint`}>
                       <FileText size={16} />
                       View Blueprint
-                      {generatedSectionCount > 0 && (
-                        <span className="btn-count">
-                          {generatedSectionCount}/{BLUEPRINT_SECTIONS.length}
-                        </span>
-                      )}
+                      {generatedSectionCount > 0 && <span className="btn-count">{generatedSectionCount}</span>}
                     </a>
                 )}
               </div>

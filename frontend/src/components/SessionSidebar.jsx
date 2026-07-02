@@ -1,11 +1,12 @@
 import React from 'react';
-import { MessageSquare, PanelLeft, Sparkles, Trash2 } from 'lucide-react';
+import { History, MessageSquare, Plus, Sparkles, Trash2 } from 'lucide-react';
 
 export default function SessionSidebar({
   sessions,
   currentChatId,
   onSelectSession,
   onDeleteSession,
+  onNewChat,
   streamActive = false,
 }) {
   const formatDate = (timestamp) => {
@@ -26,14 +27,22 @@ export default function SessionSidebar({
   return (
     <aside className="sidebar" aria-label="Saved Genesis sessions">
       <div className="sidebar-header">
-        <div className="genesis-logo-mark sidebar-mark">G</div>
-        <div>
-          <h2>Genesis</h2>
-          <p>Saved sessions</p>
-        </div>
-        <PanelLeft size={18} className="sidebar-header-icon" aria-hidden="true" />
+        <a href="/" className="sidebar-title-link sidebar-studio-title" aria-label="Return to Genesis home">
+          <span className="genesis-logo-mark sidebar-mark" aria-hidden="true">G</span>
+          <h2>Genesis Studio</h2>
+        </a>
+        <nav className="sidebar-nav" aria-label="Genesis Studio navigation">
+          <button type="button" className="sidebar-nav-item is-active" onClick={onNewChat} disabled={streamActive}>
+            <Plus size={16} />
+            <span>New</span>
+          </button>
+          <a className="sidebar-nav-item" href="#saved-sessions">
+            <History size={16} />
+            <span>History</span>
+          </a>
+        </nav>
       </div>
-      <div className="sidebar-list">
+      <div className="sidebar-list" id="saved-sessions">
         {sessions.length === 0 ? (
           <div className="empty-sidebar">
             <Sparkles size={18} />

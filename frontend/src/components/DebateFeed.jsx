@@ -1,5 +1,5 @@
 import React, { useEffect, useRef } from 'react';
-import { Activity, Bot, CheckCircle2, Route, Sparkles, UserRound } from 'lucide-react';
+import { Activity, Bot, CheckCircle2, Sparkles, UserRound } from 'lucide-react';
 import { AnimatedList, SpotlightCard } from './reactbits/VisualEffects';
 
 export default function DebateFeed({ events }) {
@@ -11,8 +11,6 @@ export default function DebateFeed({ events }) {
 
   const getMessageKind = (event) => {
     if (event.type === 'user_input') return 'user';
-    if (event.type === 'agent_selection') return 'agent-selection';
-    if (event.type === 'coordinator_routing') return 'routing';
     if (event.type === 'phase') return 'phase';
     if (event.type === 'error') return 'error';
     if (event.type === 'session_saved' || event.type === 'summarizer') return 'complete';
@@ -20,62 +18,12 @@ export default function DebateFeed({ events }) {
     return 'assistant';
   };
 
-  const initialsFor = (name) =>
-    String(name || 'AI')
-      .replace('/', ' ')
-      .split(' ')
-      .filter(Boolean)
-      .map((part) => part[0])
-      .join('')
-      .substring(0, 2)
-      .toUpperCase() || 'AI';
-
-  const getIdentity = (event) => {
-    if (event.type === 'user_input') {
-      return { name: 'You', role: '', avatar: 'U' };
-    }
-    if (event.type === 'coordinator_routing') {
-      const selected = event.selected_agent_identity || {};
-      return {
-        name: selected.name || event.coordinator_selected_agent || 'Selected specialist',
-        role: selected.role || selected.description || 'Specialist agent',
-        avatar: selected.avatar || initialsFor(selected.name || event.coordinator_selected_agent),
-      };
-    }
-    if (event.type === 'agent_selection') {
-      return { name: 'System', role: 'Routing summary', avatar: 'AI' };
-    }
-    const identity = event.agent_identity || {};
-    const name = identity.name || event.agent || (event.type === 'session_saved' ? 'Report Generator' : 'Genesis');
-    return {
-      name,
-      role: identity.role || identity.description || (event.agent ? 'Specialist agent' : 'Workspace assistant'),
-      avatar: identity.avatar || initialsFor(name),
-    };
-  };
-
   const getTitle = (event) => {
+    if (event.type === 'user_input') return 'You';
     if (event.type === 'phase') return event.content || 'Phase update';
+    if (event.agent) return event.agent;
     if (event.type === 'session_saved') return 'Blueprint saved';
-    return getIdentity(event).name;
-  };
-
-  const normalizedAgentNames = (event) => {
-    const coreAgents = Array.isArray(event.core_agents) ? event.core_agents : [];
-    const standbyAgents = Array.isArray(event.standby_specialists) ? event.standby_specialists : [];
-    const names = [
-      ...coreAgents,
-      ...standbyAgents.map((specialist) => specialist?.role || specialist?.name || specialist?.id),
-    ];
-    const seen = new Set();
-    return names
-      .map((name) => String(name || '').trim())
-      .filter((name) => {
-        const key = name.toLowerCase();
-        if (!name || seen.has(key)) return false;
-        seen.add(key);
-        return true;
-      });
+    return 'Genesis';
   };
 
   const formatTime = (timestamp) => {
@@ -86,37 +34,6 @@ export default function DebateFeed({ events }) {
 
   const renderContent = (event) => {
     if (event.type === 'phase') return 'Genesis is moving the boardroom into the next step.';
-    if (event.type === 'coordinator_routing') {
-      const selected = getIdentity(event);
-      return (
-        <div className="routing-card-content">
-          <span>Coordinator selected</span>
-          <strong>{selected.name}</strong>
-          {event.reason && <p>{event.reason}</p>}
-        </div>
-      );
-    }
-    if (event.type === 'agent_selection') {
-      const agentNames = normalizedAgentNames(event);
-      const standbyCount = Array.isArray(event.standby_specialists) ? event.standby_specialists.length : 0;
-      return (
-        <div className="agent-selection-summary">
-          <span className="agent-selection-label">Specialists selected for this response:</span>
-          {agentNames.length > 0 && (
-            <div className="agent-selection-chips" aria-label="Selected agents">
-              {agentNames.map((name) => (
-                <span key={name} className="agent-selection-chip">
-                  {name}
-                </span>
-              ))}
-            </div>
-          )}
-          {standbyCount === 0 && (
-            <p className="agent-selection-note">No extra standby specialists selected.</p>
-          )}
-        </div>
-      );
-    }
     if (event.type === 'agent_typing') {
       return (
         <span className="typing-indicator" aria-label={`${event.agent || 'Agent'} is typing`}>
@@ -149,8 +66,7 @@ export default function DebateFeed({ events }) {
       <AnimatedList className="conversation-list" role="log" aria-live="polite" aria-relevant="additions text">
         {events.map((event, idx) => {
           const kind = getMessageKind(event);
-          const identity = getIdentity(event);
-          const Icon = kind === 'user' ? UserRound : kind === 'complete' ? CheckCircle2 : kind === 'routing' || kind === 'agent-selection' ? Route : Bot;
+          const Icon = kind === 'user' ? UserRound : kind === 'complete' ? CheckCircle2 : Bot;
           return (
             <article
               key={event.id || `${event.type}-${idx}`}
@@ -158,18 +74,11 @@ export default function DebateFeed({ events }) {
               style={{ '--message-index': idx }}
             >
               <div className="chat-avatar" aria-hidden="true">
-                {kind === 'assistant' || kind === 'streaming' || kind === 'routing' ? (
-                  <span>{identity.avatar}</span>
-                ) : (
-                  <Icon size={17} />
-                )}
+                <Icon size={17} />
               </div>
               <SpotlightCard className="chat-bubble">
                 <div className="chat-message-header">
-                  <div className="chat-message-identity">
-                    <strong>{getTitle(event)}</strong>
-                    {identity.role && kind !== 'user' && <small>{identity.role}</small>}
-                  </div>
+                  <strong>{getTitle(event)}</strong>
                   {event.timestamp && <time>{formatTime(event.timestamp)}</time>}
                 </div>
                 <div className="chat-message-content">{renderContent(event)}</div>

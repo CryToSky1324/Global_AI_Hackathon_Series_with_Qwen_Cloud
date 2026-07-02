@@ -1,0 +1,73 @@
+.rb-logo-loop {
+  --rb-logo-gap: 12px;
+  --rb-logo-height: 38px;
+  --rb-logo-fade: rgba(245, 250, 255, 0.96);
+}
+
+.rb-logo-loop-track {
+  gap: var(--rb-logo-gap);
+}
+
+.rb-logo-loop-pill {
+  min-height: 58px;
+  gap: 0.72rem;
+  border-color: rgba(23, 31, 48, 0.1);
+  background:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.84), rgba(255, 255, 255, 0.58)),
+    rgba(255, 255, 255, 0.72);
+  color: #243047;
+  padding: 0.68rem 1rem 0.68rem 0.72rem;
+  box-shadow: 0 18px 48px rgba(35, 50, 79, 0.08);
+  backdrop-filter: blur(22px) saturate(170%);
+  -webkit-backdrop-filter: blur(22px) saturate(170%);
+}
+
+.rb-logo-loop-icon {
+  width: var(--rb-logo-height);
+  height: var(--rb-logo-height);
+  display: grid;
+  place-items: center;
+  flex: 0 0 var(--rb-logo-height);
+  border: 1px solid rgba(31, 86, 217, 0.13);
+  border-radius: 999px;
+  background: rgba(31, 86, 217, 0.08);
+  color: #1f56d9;
+}
+
+.rb-logo-loop-icon svg {
+  width: 20px;
+  height: 20px;
+}
+
+.rb-logo-loop-icon.green {
+  border-color: rgba(13, 110, 73, 0.15);
+  background: rgba(13, 110, 73, 0.08);
+  color: #0d6e49;
+}
+
+.rb-logo-loop-icon.dark {
+  border-color: rgba(23, 31, 48, 0.15);
+  background: rgba(23, 31, 48, 0.08);
+  color: #171f30;
+}
+
+.rb-logo-loop-icon.red {
+  border-color: rgba(216, 79, 104, 0.16);
+  background: rgba(216, 79, 104, 0.08);
+  color: #b93551;
+}
+
+.rb-logo-loop-icon.gold {
+  border-color: rgba(190, 126, 22, 0.18);
+  background: rgba(244, 180, 0, 0.12);
+  color: #9f6505;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .rb-logo-loop-track {
+    animation: none;
+    flex-wrap: wrap;
+    justify-content: center;
+    width: 100%;
+  }
+}
