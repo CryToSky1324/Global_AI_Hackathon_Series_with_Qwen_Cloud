@@ -3,6 +3,7 @@ import json
 import logging
 import time
 import uuid
+from pathlib import Path
 
 from fastapi import APIRouter, HTTPException, Query, Request, Response
 from fastapi.responses import StreamingResponse
@@ -39,6 +40,16 @@ _run_tasks: dict[str, asyncio.Task] = {}
 
 def _sse(event: dict) -> str:
     return f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
+
+
+def _session_not_found() -> HTTPException:
+    return HTTPException(
+        status_code=404,
+        detail={
+            "code": "SESSION_NOT_FOUND",
+            "message": "Session not found",
+        },
+    )
 
 
 def _notify_run(run_id: str):
@@ -107,6 +118,17 @@ def _persist_stream_event(
     title: str,
     browser_session_id: str,
 ) -> str | None:
+    active_session_id = event.get("chat_id") or session_id
+    if event.get("type") == "section_updated" and event.get("section") and active_session_id:
+        chat_repository.apply_project_section_update(
+            active_session_id,
+            str(event.get("section")),
+            event.get("after") if isinstance(event.get("after"), dict) else {"content": event.get("content", "")},
+            browser_session_id=browser_session_id,
+            title=title,
+        )
+        return active_session_id
+
     if event.get("type") in {
         "status",
         "phase",
@@ -116,8 +138,7 @@ def _persist_stream_event(
         "agent_delta",
         "round_started",
         "debate_needs_more",
-        "section_updated",
-    }:
+        }:
         return event.get("chat_id") or session_id
 
     persisted_event = _event_for_persistence(event)
@@ -154,7 +175,51 @@ def _persist_stream_event(
             browser_session_id=browser_session_id,
         )
 
+    if event_type == "session_saved":
+        _snapshot_project_artifact(
+            active_session_id,
+            event,
+            title,
+            browser_session_id,
+        )
+
     return active_session_id
+
+
+def _snapshot_project_artifact(
+    session_id: str | None,
+    event: dict,
+    title: str,
+    browser_session_id: str,
+) -> None:
+    if not session_id:
+        return
+    path = Path(str(event.get("path") or ""))
+    if not path:
+        return
+    try:
+        if not path.exists() or path.name != "session.json":
+            return
+        data = json.loads(path.read_text(encoding="utf-8"))
+        if data.get("chat_id") and str(data["chat_id"]) != session_id:
+            return
+        if data.get("browser_session_id") and data.get("browser_session_id") != browser_session_id:
+            return
+        chat_repository.save_project_state(
+            session_id=session_id,
+            browser_session_id=browser_session_id,
+            user_idea=data.get("user_idea") or title,
+            research_brief=data.get("research_brief") if isinstance(data.get("research_brief"), dict) else {},
+            agent_briefs=data.get("agent_briefs") if isinstance(data.get("agent_briefs"), dict) else {},
+            sections=data.get("sections") if isinstance(data.get("sections"), dict) else {},
+            decision_log=data.get("decision_log") if isinstance(data.get("decision_log"), list) else [],
+            change_history=data.get("change_history") if isinstance(data.get("change_history"), list) else [],
+            created_at=data.get("created_at"),
+            updated_at=data.get("updated_at"),
+            title=title,
+        )
+    except Exception:
+        logger.exception("Failed to snapshot project artifact into SQLite")
 
 
 def _event_for_persistence(event: dict) -> dict:
@@ -542,7 +607,7 @@ def _start_run_task(request: ChatRequest, browser_session_id: str) -> dict:
         request.chat_id,
         browser_session_id,
     ):
-        raise HTTPException(status_code=404, detail="Session not found")
+        raise _session_not_found()
     intent_result, has_business_context = _classify_for_request(request, browser_session_id)
     run_id = request.run_id or str(uuid.uuid4())
     run = chat_repository.create_run(
@@ -667,7 +732,7 @@ def get_chat_run(run_id: str, request: Request, response: Response):
     set_browser_session_cookie(response, browser_session_id)
     run = chat_repository.get_run(run_id, browser_session_id=browser_session_id)
     if run is None:
-        raise HTTPException(status_code=404, detail="Run not found")
+        raise _session_not_found()
     return run
 
 
@@ -682,7 +747,7 @@ def get_chat_run_events(
     browser_session_id, _ = resolve_browser_session_id(request)
     set_browser_session_cookie(response, browser_session_id)
     if chat_repository.get_run(run_id, browser_session_id=browser_session_id) is None:
-        raise HTTPException(status_code=404, detail="Run not found")
+        raise _session_not_found()
     return {
         "run_id": run_id,
         "events": chat_repository.list_stream_events(
@@ -703,7 +768,7 @@ async def stream_chat_run(
 ):
     browser_session_id, _ = resolve_browser_session_id(request)
     if chat_repository.get_run(run_id, browser_session_id=browser_session_id) is None:
-        raise HTTPException(status_code=404, detail="Run not found")
+        raise _session_not_found()
     response = StreamingResponse(
         _stream_run_events(run_id, browser_session_id, after_sequence, last_event_id),
         media_type="text/event-stream",

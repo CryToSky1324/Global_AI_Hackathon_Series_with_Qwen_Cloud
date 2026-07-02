@@ -7,7 +7,7 @@ from typing import Any
 from sqlalchemy import func
 
 from .database import SessionLocal
-from .models import ChatMessage, ChatRun, ChatSession, ChatStreamEvent
+from .models import BrowserSession, ChatMessage, ChatProjectState, ChatRun, ChatSession, ChatStreamEvent
 
 
 def _now() -> float:
@@ -25,6 +25,14 @@ def _content_text(content: Any) -> str:
     if isinstance(content, str):
         return content
     return json.dumps(content, ensure_ascii=False)
+
+
+def _json_object(value: Any) -> dict:
+    return value if isinstance(value, dict) else {}
+
+
+def _json_list(value: Any) -> list:
+    return value if isinstance(value, list) else []
 
 
 @contextmanager
@@ -49,6 +57,83 @@ def _matches_browser_session(row, browser_session_id: str | None) -> bool:
     if browser_session_id is None:
         return True
     return getattr(row, "browser_session_id", None) == browser_session_id
+
+
+def get_browser_session(
+    browser_session_id: str,
+    db=None,
+    session_factory=None,
+) -> dict | None:
+    with _session_scope(db, session_factory) as scoped:
+        session = scoped.get(BrowserSession, browser_session_id)
+        return browser_session_to_dict(session) if session is not None else None
+
+
+def create_browser_session(
+    browser_session_id: str,
+    db=None,
+    session_factory=None,
+) -> dict:
+    now = _now()
+    with _session_scope(db, session_factory) as scoped:
+        session = scoped.get(BrowserSession, browser_session_id)
+        if session is None:
+            session = BrowserSession(
+                id=browser_session_id,
+                created_at=now,
+                last_seen_at=now,
+            )
+            scoped.add(session)
+        else:
+            session.last_seen_at = now
+        scoped.flush()
+        return browser_session_to_dict(session)
+
+
+def touch_browser_session(
+    browser_session_id: str,
+    db=None,
+    session_factory=None,
+) -> dict | None:
+    now = _now()
+    with _session_scope(db, session_factory) as scoped:
+        session = scoped.get(BrowserSession, browser_session_id)
+        if session is None:
+            return None
+        session.last_seen_at = now
+        scoped.flush()
+        return browser_session_to_dict(session)
+
+
+def browser_session_has_references(
+    browser_session_id: str,
+    db=None,
+    session_factory=None,
+) -> bool:
+    with _session_scope(db, session_factory) as scoped:
+        session_exists = (
+            scoped.query(ChatSession.id)
+            .filter(ChatSession.browser_session_id == browser_session_id)
+            .first()
+            is not None
+        )
+        if session_exists:
+            return True
+        run_exists = (
+            scoped.query(ChatRun.id)
+            .filter(ChatRun.browser_session_id == browser_session_id)
+            .first()
+            is not None
+        )
+        if run_exists:
+            return True
+        state_exists = (
+            scoped.query(ChatProjectState.session_id)
+            .filter(ChatProjectState.browser_session_id == browser_session_id)
+            .first()
+            is not None
+        )
+        return bool(state_exists)
 
 
 def _ensure_session(
@@ -116,6 +201,127 @@ def create_session(
             if updated_at is not None:
                 session.updated_at = updated_at
         return session_to_dict(session)
+
+
+def save_project_state(
+    session_id: str,
+    browser_session_id: str | None = None,
+    user_idea: str | None = None,
+    research_brief: dict | None = None,
+    agent_briefs: dict | None = None,
+    sections: dict | None = None,
+    decision_log: list | None = None,
+    change_history: list | None = None,
+    created_at: float | None = None,
+    updated_at: float | None = None,
+    title: str | None = None,
+    db=None,
+    session_factory=None,
+) -> dict:
+    now = _now()
+    with _session_scope(db, session_factory) as scoped:
+        session = _ensure_session(
+            scoped,
+            session_id,
+            title=title or user_idea,
+            browser_session_id=browser_session_id,
+        )
+        state = scoped.get(ChatProjectState, session_id)
+        if state is None:
+            state = ChatProjectState(
+                session_id=session_id,
+                browser_session_id=browser_session_id or session.browser_session_id,
+                user_idea=str(user_idea or session.title or ""),
+                research_brief=_json_object(research_brief),
+                agent_briefs=_json_object(agent_briefs),
+                sections=_json_object(sections),
+                decision_log=_json_list(decision_log),
+                change_history=_json_list(change_history),
+                created_at=created_at or session.created_at or now,
+                updated_at=updated_at or now,
+            )
+            scoped.add(state)
+        else:
+            if browser_session_id is not None and state.browser_session_id not in {None, browser_session_id}:
+                raise PermissionError("Project state belongs to a different browser session")
+            if browser_session_id is not None and state.browser_session_id is None:
+                state.browser_session_id = browser_session_id
+            if user_idea is not None:
+                state.user_idea = str(user_idea)
+            if research_brief is not None:
+                state.research_brief = _json_object(research_brief)
+            if agent_briefs is not None:
+                state.agent_briefs = _json_object(agent_briefs)
+            if sections is not None:
+                state.sections = _json_object(sections)
+            if decision_log is not None:
+                state.decision_log = _json_list(decision_log)
+            if change_history is not None:
+                state.change_history = _json_list(change_history)
+            state.updated_at = updated_at or now
+        if title and session.title == "Untitled Session":
+            session.title = _title_from(title)
+        session.updated_at = max(session.updated_at or 0, state.updated_at or now)
+        scoped.flush()
+        return project_state_to_dict(state)
+
+
+def apply_project_section_update(
+    session_id: str,
+    section: str,
+    section_value: dict,
+    browser_session_id: str | None = None,
+    title: str | None = None,
+    db=None,
+    session_factory=None,
+) -> dict:
+    now = _now()
+    with _session_scope(db, session_factory) as scoped:
+        session = _ensure_session(
+            scoped,
+            session_id,
+            title=title,
+            browser_session_id=browser_session_id,
+        )
+        state = scoped.get(ChatProjectState, session_id)
+        if state is None:
+            state = ChatProjectState(
+                session_id=session_id,
+                browser_session_id=browser_session_id or session.browser_session_id,
+                user_idea=session.title,
+                sections={},
+                created_at=session.created_at or now,
+                updated_at=now,
+            )
+            scoped.add(state)
+            scoped.flush()
+        elif browser_session_id is not None and state.browser_session_id not in {None, browser_session_id}:
+            raise PermissionError("Project state belongs to a different browser session")
+        elif browser_session_id is not None and state.browser_session_id is None:
+            state.browser_session_id = browser_session_id
+
+        sections = dict(state.sections or {})
+        sections[str(section)] = _json_object(section_value)
+        state.sections = sections
+        state.updated_at = now
+        session.updated_at = now
+        scoped.flush()
+        return project_state_to_dict(state)
+
+
+def get_project_state(
+    session_id: str,
+    browser_session_id: str | None = None,
+    db=None,
+    session_factory=None,
+) -> dict | None:
+    with _session_scope(db, session_factory) as scoped:
+        state = scoped.get(ChatProjectState, session_id)
+        if state is None:
+            return None
+        if not _matches_browser_session(state, browser_session_id):
+            return None
+        return project_state_to_dict(state)
 
 
 def list_sessions(
@@ -485,6 +691,31 @@ def delete_session(
         return True
 
 
+def browser_session_to_dict(session: BrowserSession) -> dict:
+    return {
+        "id": session.id,
+        "browser_session_id": session.id,
+        "created_at": session.created_at,
+        "last_seen_at": session.last_seen_at,
+    }
+
+
+def project_state_to_dict(state: ChatProjectState) -> dict:
+    return {
+        "session_id": state.session_id,
+        "chat_id": state.session_id,
+        "browser_session_id": state.browser_session_id,
+        "user_idea": state.user_idea,
+        "research_brief": state.research_brief or {},
+        "agent_briefs": state.agent_briefs or {},
+        "sections": state.sections or {},
+        "decision_log": state.decision_log or [],
+        "change_history": state.change_history or [],
+        "created_at": state.created_at,
+        "updated_at": state.updated_at,
+    }
+
+
 def session_to_dict(session: ChatSession, include_messages: bool = False) -> dict:
     data = {
         "id": session.id,
@@ -497,6 +728,8 @@ def session_to_dict(session: ChatSession, include_messages: bool = False) -> dic
     }
     if include_messages:
         data["messages"] = [message_to_dict(message) for message in session.messages]
+    if session.project_state is not None:
+        data["project_state"] = project_state_to_dict(session.project_state)
     return data
 
 

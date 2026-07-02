@@ -7,6 +7,14 @@ from sqlalchemy.orm import relationship
 from .database import Base
 
 
+class BrowserSession(Base):
+    __tablename__ = "browser_sessions"
+
+    id = Column(String(64), primary_key=True)
+    created_at = Column(Float, nullable=False, default=time.time)
+    last_seen_at = Column(Float, nullable=False, default=time.time)
+
+
 class ChatSession(Base):
     __tablename__ = "chat_sessions"
 
@@ -22,6 +30,13 @@ class ChatSession(Base):
         back_populates="session",
         cascade="all, delete-orphan",
         order_by="ChatMessage.created_at, ChatMessage.id",
+    )
+
+    project_state = relationship(
+        "ChatProjectState",
+        back_populates="session",
+        cascade="all, delete-orphan",
+        uselist=False,
     )
 
 
@@ -108,7 +123,29 @@ class ChatStreamEvent(Base):
     run = relationship("ChatRun", back_populates="events")
 
 
+class ChatProjectState(Base):
+    __tablename__ = "chat_project_states"
+
+    session_id = Column(
+        String(64),
+        ForeignKey("chat_sessions.id", ondelete="CASCADE"),
+        primary_key=True,
+    )
+    browser_session_id = Column(String(64), nullable=True, index=True)
+    user_idea = Column(Text, nullable=False, default="")
+    research_brief = Column(JSON, nullable=False, default=dict)
+    agent_briefs = Column(JSON, nullable=False, default=dict)
+    sections = Column(JSON, nullable=False, default=dict)
+    decision_log = Column(JSON, nullable=False, default=list)
+    change_history = Column(JSON, nullable=False, default=list)
+    created_at = Column(Float, nullable=False, default=time.time)
+    updated_at = Column(Float, nullable=False, default=time.time)
+
+    session = relationship("ChatSession", back_populates="project_state")
+
+
 Index("ix_chat_stream_events_run_sequence", ChatStreamEvent.run_id, ChatStreamEvent.sequence)
 Index("ix_chat_runs_session_created", ChatRun.session_id, ChatRun.created_at)
 Index("ix_chat_sessions_browser_updated", ChatSession.browser_session_id, ChatSession.updated_at)
 Index("ix_chat_runs_browser_created", ChatRun.browser_session_id, ChatRun.created_at)
+Index("ix_chat_project_states_browser_updated", ChatProjectState.browser_session_id, ChatProjectState.updated_at)

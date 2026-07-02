@@ -80,24 +80,51 @@ class ProjectSessionService:
             chat_id,
             browser_session_id=browser_session_id,
         )
+        project_state = db_session.get("project_state") if db_session else None
 
-        try:
-            session = store.load(chat_id, browser_session_id=browser_session_id)
-            data = session.to_dict()
-        except (FileNotFoundError, PermissionError):
-            if db_session is None:
-                raise FileNotFoundError(f"No session found for chat_id {chat_id}")
+        if project_state is not None:
             data = {
                 "chat_id": db_session["id"],
-                "created_at": db_session["created_at"],
-                "updated_at": db_session["updated_at"],
-                "user_idea": db_session["title"],
-                "research_brief": {},
-                "agent_briefs": {},
-                "sections": {},
-                "decision_log": [],
-                "change_history": [],
+                "created_at": project_state.get("created_at") or db_session["created_at"],
+                "updated_at": project_state.get("updated_at") or db_session["updated_at"],
+                "user_idea": project_state.get("user_idea") or db_session["title"],
+                "research_brief": project_state.get("research_brief") or {},
+                "agent_briefs": project_state.get("agent_briefs") or {},
+                "sections": project_state.get("sections") or {},
+                "decision_log": project_state.get("decision_log") or [],
+                "change_history": project_state.get("change_history") or [],
             }
+        else:
+            try:
+                session = store.load(chat_id, browser_session_id=browser_session_id)
+                data = session.to_dict()
+                if db_session is not None:
+                    chat_repository.save_project_state(
+                        session_id=db_session["id"],
+                        browser_session_id=browser_session_id,
+                        user_idea=data.get("user_idea") or db_session["title"],
+                        research_brief=data.get("research_brief") if isinstance(data.get("research_brief"), dict) else {},
+                        agent_briefs=data.get("agent_briefs") if isinstance(data.get("agent_briefs"), dict) else {},
+                        sections=data.get("sections") if isinstance(data.get("sections"), dict) else {},
+                        decision_log=data.get("decision_log") if isinstance(data.get("decision_log"), list) else [],
+                        change_history=data.get("change_history") if isinstance(data.get("change_history"), list) else [],
+                        created_at=data.get("created_at"),
+                        updated_at=data.get("updated_at"),
+                    )
+            except (FileNotFoundError, PermissionError):
+                if db_session is None:
+                    raise FileNotFoundError(f"No session found for chat_id {chat_id}")
+                data = {
+                    "chat_id": db_session["id"],
+                    "created_at": db_session["created_at"],
+                    "updated_at": db_session["updated_at"],
+                    "user_idea": db_session["title"],
+                    "research_brief": {},
+                    "agent_briefs": {},
+                    "sections": {},
+                    "decision_log": [],
+                    "change_history": [],
+                }
 
         if db_session is not None:
             data.update(
