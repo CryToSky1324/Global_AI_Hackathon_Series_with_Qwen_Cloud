@@ -18,41 +18,16 @@ default_origins = [
     "http://127.0.0.1:3000",
     "http://localhost:5173",
     "http://127.0.0.1:5173",
+    "http://47.245.99.13:3000",
+    "https://global-ai-hackathon-series-with-qwen-clo-crytosky1324s-projects.vercel.app",
 ]
-allowed_origins = [
-    origin.strip()
-    for origin in os.getenv("FRONTEND_CORS_ORIGINS", ",".join(default_origins)).split(",")
-    if origin.strip()
-]
-allowed_origin_set = set(allowed_origins)
-
-
-@app.middleware("http")
-async def reject_untrusted_cookie_origin(request, call_next):
-    origin = request.headers.get("origin")
-    if (
-        origin
-        and request.method in {"POST", "PUT", "PATCH", "DELETE"}
-        and origin not in allowed_origin_set
-        and "*" not in allowed_origin_set
-    ):
-        return JSONResponse(
-            status_code=403,
-            content={
-                "detail": {
-                    "code": "ORIGIN_NOT_ALLOWED",
-                    "message": "Request origin is not allowed",
-                }
-            },
-        )
-    return await call_next(request)
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=allowed_origins,
+    allow_origins=["*"],
     allow_credentials=True,
-    allow_methods=["GET", "POST", "DELETE", "OPTIONS"],
-    allow_headers=["Content-Type", "Authorization", "Last-Event-ID"],
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 app.include_router(chat_router, prefix="/api")
