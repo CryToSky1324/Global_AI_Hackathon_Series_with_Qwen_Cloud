@@ -33,7 +33,7 @@ async function fetchWithTimeout(url, options = {}, timeoutMs = 7000) {
 }
 
 export async function healthCheck() {
-  const response = await fetchWithTimeout(apiUrl('/api/health'), {}, 4500);
+  const response = await fetchWithTimeout(apiUrl('/health'), {}, 4500);
   if (!response.ok) {
     throw new Error(`Health check failed: ${response.status}`);
   }
@@ -41,7 +41,7 @@ export async function healthCheck() {
 }
 
 export async function listSessions() {
-  const response = await fetch(apiUrl('/api/sessions'), cookieFetchOptions);
+  const response = await fetch(apiUrl('/sessions'), cookieFetchOptions);
   if (!response.ok) {
     throw new Error(`Failed to list sessions: ${response.status}`);
   }
@@ -49,7 +49,7 @@ export async function listSessions() {
 }
 
 export async function getSession(chatId) {
-  const response = await fetch(apiUrl(`/api/sessions/${encodeURIComponent(chatId)}`), cookieFetchOptions);
+  const response = await fetch(apiUrl(`/sessions/${encodeURIComponent(chatId)}`), cookieFetchOptions);
   if (!response.ok) {
     throw new Error(`Failed to load session details: ${response.status}`);
   }
@@ -57,7 +57,7 @@ export async function getSession(chatId) {
 }
 
 export async function deleteSession(chatId) {
-  const response = await fetch(apiUrl(`/api/sessions/${encodeURIComponent(chatId)}`), {
+  const response = await fetch(apiUrl(`/sessions/${encodeURIComponent(chatId)}`), {
     ...cookieFetchOptions,
     method: 'DELETE',
   });
@@ -82,7 +82,7 @@ export async function streamSimulation({
   onDone,
 }) {
   try {
-    const response = await fetch(apiUrl('/api/chat/stream'), {
+    const response = await fetch(apiUrl('/chat/stream'), {
       ...cookieFetchOptions,
       method: 'POST',
       headers: {
