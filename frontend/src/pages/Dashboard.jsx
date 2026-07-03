@@ -110,9 +110,7 @@ export default function Dashboard({ initialChatId = null }) {
     } catch (e) {
       setConnectionState('offline');
       setConnectionBannerHidden(false);
-      setConnectionMessage(
-        `Backend is not reachable. Start it on ${API_BACKEND_HINT} or set VITE_USE_DIRECT_API=true with VITE_API_BASE_URL.`
-      );
+      setConnectionMessage(`Backend offline. Start ${API_BACKEND_HINT}.`);
       return false;
     }
   };

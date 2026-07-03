@@ -6,10 +6,11 @@ import {
   Send,
 } from 'lucide-react';
 
-const quickPrompts = [
-  'pressure-test my MVP',
-  'research go-to-market risks',
-  'create an investor-ready plan',
+const examplePrompts = [
+  ['AI logistics', 'I want to build an AI logistics platform for small businesses that reduces delivery costs.'],
+  ['Meal planning', 'I want to create a meal planning app for university students that helps them eat on a budget.'],
+  ['Cybersecurity', 'I want to start a cybersecurity consultancy service for SMEs in Malaysia.'],
+  ['HR SaaS', 'I want to build a SaaS tool for HR teams that automates employee onboarding.'],
 ];
 
 export default function IdeaInput({
@@ -30,9 +31,28 @@ export default function IdeaInput({
   };
 
   const canSubmit = Boolean(idea.trim()) && !streamActive;
+  const isNewIdea = !currentChatId;
 
   return (
     <form className="composer-shell" onSubmit={handleSubmit}>
+      {isNewIdea && (
+        <section className="idea-guidance" aria-label="Startup idea examples">
+          <div className="idea-examples" aria-label="Example startup idea prompts">
+            {examplePrompts.map(([label, prompt]) => (
+              <button
+                type="button"
+                className="example-chip"
+                onClick={() => setIdea(prompt)}
+                disabled={streamActive}
+                key={prompt}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+        </section>
+      )}
+
       <div className="composer-card">
         <label className="sr-only" htmlFor="idea-input">
           {currentChatId ? 'Refine this blueprint' : 'Ask Genesis anything'}
@@ -43,7 +63,7 @@ export default function IdeaInput({
           placeholder={
             currentChatId
               ? 'Ask Genesis to revisit pricing, compliance, risk, MVP scope...'
-              : 'Ask Genesis to build, research, or refine a startup blueprint...'
+              : 'I want to build [product/service] for [target users] that solves [problem].'
           }
           value={idea}
           onChange={(e) => setIdea(e.target.value)}
@@ -66,6 +86,9 @@ export default function IdeaInput({
                 ? 'Checking'
                 : 'Offline'}
           </span>
+
+
+
           <button
             type="submit"
             className="composer-send"
@@ -76,22 +99,6 @@ export default function IdeaInput({
           </button>
         </div>
       </div>
-
-      {!currentChatId && (
-        <div className="composer-suggestions" aria-label="Try prompts">
-          {quickPrompts.map((prompt) => (
-            <button
-              type="button"
-              className="quick-chip"
-              onClick={() => setIdea(prompt)}
-              disabled={streamActive}
-              key={prompt}
-            >
-              Try: {prompt}
-            </button>
-          ))}
-        </div>
-      )}
 
       <div className="composer-meta">
         <button type="button" className="reset-link" onClick={onReset} disabled={streamActive}>
