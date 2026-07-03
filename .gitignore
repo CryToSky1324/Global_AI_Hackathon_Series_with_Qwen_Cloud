@@ -83,3 +83,9 @@ backend/data/
 # =========================
 build/
 out/
+# ==========================
+# Frontend
+# ==========================
+.pnpm-store/
+node_modules/
+.env
