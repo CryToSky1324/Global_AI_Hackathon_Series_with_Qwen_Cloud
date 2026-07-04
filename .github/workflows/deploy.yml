@@ -18,7 +18,7 @@ jobs:
           key: ${{ secrets.ALIBABA_SSH_KEY }}
           script: |
             # 1. Navigate to your project folder
-            cd /home/crytosky/Global_AI_Hackathon_Series_with_Qwen_Cloud
+            cd /var/www/Global_AI_Hackathon_Series_with_Qwen_Cloud
             # 2. Pull the latest code
             git pull origin main
             # 3. Restart the PM2 process
