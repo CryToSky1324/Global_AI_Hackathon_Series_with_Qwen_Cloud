@@ -16,8 +16,6 @@ app = FastAPI(title="Business Agent swarm society backend")
 default_origins = [
     "http://localhost:3000",
     "http://127.0.0.1:3000",
-    "http://localhost:5173",
-    "http://127.0.0.1:5173",
     "http://47.245.99.13:3000",
     "https://global-ai-hackathon-series-with-qwen-clo-crytosky1324s-projects.vercel.app",
 ]

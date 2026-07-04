@@ -5,12 +5,10 @@ export default defineConfig({
   plugins: [react()],
   server: {
     port: 3000,
-    host: true,
     proxy: {
       '/backend': {
-        target: 'http://47.245.99.13:8000',
+        target: 'http://127.0.0.1:8000',
         changeOrigin: true,
-        secure: false,
         rewrite: (path) => path.replace(/^\/backend/, '/api')
       }
     }

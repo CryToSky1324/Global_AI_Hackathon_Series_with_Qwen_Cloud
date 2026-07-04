@@ -36,19 +36,34 @@ const HIDDEN_EVENT_TYPES = new Set([
   'agent_selection',
   'round_started',
   'debate_needs_more',
+  'agent_typing',
 ]);
+
+const STARTUP_CATEGORIES = [
+  'Startup Idea',
+  'Mobile App',
+  'AI Product',
+  'E-commerce',
+  'Healthcare',
+  'Education',
+  'FinTech',
+  'Sustainability',
+];
 
 function isUserFacingEvent(event) {
   if (!event) return false;
+  
   const content = typeof event.content === 'string' ? event.content.trim() : '';
   if (HIDDEN_EVENT_TYPES.has(event.type)) return false;
-  if (/^Updated section\s+/i.test(content)) return false;
-  if (/started (debate|round)|is preparing| joined$/i.test(content)) return false;
   if (event.role === 'system' || event.agent === 'System' || event.name === 'system') return false;
-  if (event.type === 'info' && /^(Starting|Product Manager defining|Genesis is convening)/i.test(content)) {
-    return false;
-  }
-  return Boolean(event.type || content);
+  
+  // Only permit bubbles that have actual text content
+  if (content.length > 0) return true;
+
+  // Only permit structured events that are meant to be visible
+  if (['agent_selection', 'coordinator_routing', 'session_saved'].includes(event.type)) return true;
+
+  return false;
 }
 
 function createClientMessageId() {
@@ -61,6 +76,61 @@ function createClientMessageId() {
 function isLocalChatId(chatId) {
   return String(chatId || '').startsWith('local:');
 }
+
+// --- RESTORED FILE 1 UTILITIES FOR DATA INTEGRITY ---
+function eventContentSignature(content) {
+  if (content === undefined || content === null) return '';
+  if (typeof content === 'string') return content;
+  try {
+    return JSON.stringify(content);
+  } catch (error) {
+    return String(content);
+  }
+}
+
+function eventIdentity(event) {
+  // Catches specific client tracking IDs to prevent optimistic update duplication
+  if (event?.type === 'user_input' && (event?.client_message_id || String(event?.id).startsWith('msg:'))) {
+    return `client:${event.client_message_id || event.id}`;
+  }
+  
+  if (event?.id) return `id:${event.id}`;
+  if (event?.sequence !== undefined && event?.sequence !== null) {
+    return `sequence:${event.run_id || event.chat_id || 'run'}:${event.sequence}`;
+  }
+  if (event?.streamingKey) return `stream:${event.streamingKey}`;
+  if (event?.type === 'user_input') {
+    return `user:${eventContentSignature(event.content)}`;
+  }
+  return [
+    'fallback',
+    event?.type || 'event',
+    event?.agent || '',
+    event?.phase || '',
+    event?.timestamp || '',
+    eventContentSignature(event?.content),
+  ].join(':');
+}
+
+function dedupeEvents(eventList) {
+  const positions = new Map();
+  const deduped = [];
+
+  eventList.forEach((event) => {
+    const key = eventIdentity(event);
+    const position = positions.get(key);
+    if (position === undefined) {
+      positions.set(key, deduped.length);
+      deduped.push(event);
+      return;
+    }
+    // Overwrite the optimistic event with the official server event
+    deduped[position] = event; 
+  });
+
+  return deduped;
+}
+// ----------------------------------------------------
 
 export default function Dashboard({ initialChatId = null }) {
   const [sessions, setSessions] = useState([]);
@@ -139,7 +209,7 @@ export default function Dashboard({ initialChatId = null }) {
       setSessionDetails(details);
       setIdea('');
 
-      const hydratedEvents = hydrateSessionEvents(details).filter(isUserFacingEvent);
+      const hydratedEvents = dedupeEvents(hydrateSessionEvents(details)).filter(isUserFacingEvent);
       setEvents(
         hydratedEvents.length > 0
           ? hydratedEvents
@@ -158,14 +228,14 @@ export default function Dashboard({ initialChatId = null }) {
       setConnectionState('request-failed');
       setConnectionBannerHidden(false);
       setConnectionMessage(`Session details could not be loaded: ${error.message}`);
-      setEvents((prev) => [
+      setEvents((prev) => dedupeEvents([
         ...prev,
         {
           type: 'error',
           content: `Failed to load session details: ${error.message}`,
           timestamp: Date.now() / 1000,
         },
-      ]);
+      ]));
     }
   };
 
@@ -251,9 +321,11 @@ export default function Dashboard({ initialChatId = null }) {
     setCurrentPhase('Initializing');
     setActiveAgent(null);
     setCurrentRunId(null);
+    
+    // FIXED: Using client_message_id instead of hijacking id
     setEvents([
       {
-        id: clientMessageId,
+        client_message_id: clientMessageId,
         type: 'user_input',
         agent: 'User',
         content: promptMessage,
@@ -293,31 +365,32 @@ export default function Dashboard({ initialChatId = null }) {
           applyBlueprintSectionEvent(event);
         }
 
+        // FIXED: Wrapped array mutations in dedupeEvents to prevent ghost duplicates
         if (event.type === 'agent_typing' || event.type === 'agent_delta') {
-          setEvents((prev) => upsertStreamingAgentEvent(prev, event));
+          setEvents((prev) => dedupeEvents(upsertStreamingAgentEvent(prev, event)));
           return;
         }
 
         if (event.type === 'agent_response') {
-          setEvents((prev) => finalizeStreamingAgentEvent(prev, event));
+          setEvents((prev) => dedupeEvents(finalizeStreamingAgentEvent(prev, event)));
           return;
         }
 
-        setEvents((prev) => [...prev, event]);
+        setEvents((prev) => dedupeEvents([...prev, event]));
 
         if (event.type === 'session_saved' && event.chat_id) {
           fetchUpdatedSession(event.chat_id);
         }
       },
       onError: (err) => {
-        setEvents((prev) => [
+        setEvents((prev) => dedupeEvents([
           ...prev,
           {
             type: 'error',
             content: `Simulation failed: ${err.message}`,
             timestamp: Date.now() / 1000,
           },
-        ]);
+        ]));
         setConnectionState('request-failed');
         setConnectionBannerHidden(false);
         setConnectionMessage(`The stream request failed: ${err.message}`);
@@ -368,27 +441,31 @@ export default function Dashboard({ initialChatId = null }) {
 
   const streamingKey = (event) => `${event.agent || 'Agent'}:${event.round || 0}:${event.phase || 'debate'}`;
 
-  const upsertStreamingAgentEvent = (prev, event) => {
-    const key = streamingKey(event);
-    const nextEvent = {
-      ...event,
-      id: event.id || `stream:${key}`,
-      type: event.type === 'agent_typing' ? 'agent_typing' : 'agent_delta',
-      content: event.content || '',
-      streamingKey: key,
-    };
-    const index = prev.findIndex((item) => item.streamingKey === key);
-    if (index < 0) return [...prev, nextEvent];
-    const next = [...prev];
-    next[index] = { ...next[index], ...nextEvent };
-    return next;
+const upsertStreamingAgentEvent = (prev, event) => {
+  // --- ADDED GUARD CLAUSE ---
+  if (!event.content || event.content.trim() === '') return prev;
+  
+  const key = streamingKey(event);
+  const nextEvent = {
+    ...event,
+    ...(event.id ? { id: event.id } : {}), 
+    type: event.type === 'agent_typing' ? 'agent_typing' : 'agent_delta',
+    content: event.content || '',
+    streamingKey: key,
   };
+  const index = prev.findIndex((item) => item.streamingKey === key);
+  if (index < 0) return [...prev, nextEvent];
+  const next = [...prev];
+  next[index] = { ...next[index], ...nextEvent };
+  return next;
+};
 
   const finalizeStreamingAgentEvent = (prev, event) => {
     const key = streamingKey(event);
     const finalEvent = {
       ...event,
-      id: event.id || `final:${key}`,
+      // FIXED: Only assign real IDs
+      ...(event.id ? { id: event.id } : {}),
       streamingKey: key,
     };
     const index = prev.findIndex((item) => item.streamingKey === key);
@@ -412,6 +489,10 @@ export default function Dashboard({ initialChatId = null }) {
   const handleReset = () => {
     if (streamActive) return;
     setIdea('');
+  };
+  
+  const applyCategoryTemplate = (category) => {
+    setIdea(`I want to build a ${category} for [target users] that solves [problem].`);
   };
 
   const hydrateSessionEvents = (details) => {
