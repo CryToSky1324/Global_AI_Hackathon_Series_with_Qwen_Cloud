@@ -65,6 +65,11 @@ export async function deleteSession(chatId) {
   return response.json();
 }
 
+export function isSessionNotFoundError(error) {
+  if (!error || typeof error.message !== 'string') return false;
+  return error.message.includes('404');
+}
+
 /**
  * Connects to the SSE chat stream using POST with fetch and ReadableStream reader.
  * Parses lines prefixed with "data: " and decodes them to JSON.

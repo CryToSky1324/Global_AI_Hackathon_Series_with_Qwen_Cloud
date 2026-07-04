@@ -288,6 +288,36 @@ h6 {
   filter: blur(0);
 }
 
+/* Container for the chips */
+.agent-selection-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px; /* This creates the space between the chips */
+  margin-top: 8px;
+}
+
+/* The individual graphical chips */
+.agent-selection-chip {
+  background-color: rgba(66, 133, 244, 0.1);
+  color: #4285f4; /* Genesis Blue, adjust to your theme */
+  border: 1px solid rgba(66, 133, 244, 0.2);
+  padding: 4px 12px;
+  border-radius: 16px; /* Makes them pill-shaped */
+  font-size: 0.85rem;
+  font-weight: 500;
+  display: inline-flex;
+  align-items: center;
+  white-space: nowrap;
+}
+
+/* Minor spacing tweak for the label */
+.agent-selection-label {
+  display: block;
+  font-size: 0.9rem;
+  color: #666;
+  margin-bottom: 4px;
+}
+
 .antigravity-overlay {
   position: fixed;
   inset: 0;
@@ -6167,4 +6197,49 @@ html[data-theme="dark"] .reset-link {
   .genesis-app .chat-shell.is-empty .composer-dock {
     top: calc(50% + 68px);
   }
+  .workspace-toolbar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    width: 100%;
+    padding: 8px 12px;
+    background: transparent;
+  }
+  .toolbar-actions {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+  .btn-secondary {
+   display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    padding: 6px 14px;
+    border-radius: 8px;
+    text-decoration: none;
+    font-weight: 500;
+    white-space: nowrap;
+  }
+  .btn-count {
+    background-color: rgba(66, 133, 244, 0.15);
+    color: #2357b5; 
+    padding: 2px 8px;
+    border-radius: 12px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    line-height: 1.2;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    margin-left: 6px; 
+  }
+  .agent-status-drawer > summary {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px; 
+  }
+  
 }
+
+

@@ -1,4 +1,4 @@
-import React, { createElement, useEffect, useMemo, useRef, useState } from 'react';
+import React, { createElement, useEffect, useMemo, useRef, useState, forwardRef } from 'react';
 import Threads from './Threads';
 import ShapeGrid from './ShapeGrid';function usePrefersReducedMotion() {
   const [reducedMotion, setReducedMotion] = useState(false);
@@ -55,9 +55,14 @@ export function FadeContent({ children, className = '' }) {
   return <div className={`rb-fade-content ${className}`}>{children}</div>;
 }
 
-export function AnimatedList({ children, className = '' }) {
-  return <div className={`rb-animated-list ${className}`}>{children}</div>;
-}
+export const AnimatedList = forwardRef(({ children, className, onScroll, ...props }, ref) => {
+  return (
+    // Attach that forwarded ref directly to the scrollable HTML element
+    <div ref={ref} className={className} onScroll={onScroll} {...props}>
+      {children}
+    </div>
+  );
+});
 
 export function SpotlightCard({ as: Tag = 'div', children, className = '', onPointerMove, ...props }) {
   const handlePointerMove = (event) => {
