@@ -89,3 +89,10 @@ out/
 .pnpm-store/
 node_modules/
 .env
+
+# ========================
+# Database
+# ========================
+backend/data/*.db
+backend/data/*.sqlite
+backend/data/*.sqlite3
