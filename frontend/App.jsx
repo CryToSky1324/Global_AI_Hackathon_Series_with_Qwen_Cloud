@@ -26,7 +26,7 @@ export default function App() {
     setTheme((current) => (current === 'dark' ? 'light' : 'dark'));
   };
 
-  const themeToggle = (
+  const floatingThemeToggle = (
     <button
       type="button"
       className="theme-toggle"
@@ -41,35 +41,26 @@ export default function App() {
 
   if (blueprintMatch) {
     return (
-      <>
-        <BlueprintPage chatId={decodeURIComponent(blueprintMatch[1])} />
-        {themeToggle}
-      </>
+      <BlueprintPage chatId={decodeURIComponent(blueprintMatch[1])} theme={theme} onToggleTheme={toggleTheme} />
     );
   }
 
   if (path === '/chat') {
     return (
-      <>
-        <Dashboard />
-        {themeToggle}
-      </>
+      <Dashboard theme={theme} onToggleTheme={toggleTheme} />
     );
   }
 
   if (chatMatch) {
     return (
-      <>
-        <Dashboard initialChatId={decodeURIComponent(chatMatch[1])} />
-        {themeToggle}
-      </>
+      <Dashboard initialChatId={decodeURIComponent(chatMatch[1])} theme={theme} onToggleTheme={toggleTheme} />
     );
   }
 
   return (
     <>
       <LandingPage />
-      {themeToggle}
+      {floatingThemeToggle}
     </>
   );
 }

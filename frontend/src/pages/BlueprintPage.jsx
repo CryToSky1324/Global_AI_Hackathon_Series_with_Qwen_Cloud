@@ -10,7 +10,6 @@ import {
   FileText,
   Layers,
   Loader2,
-  MousePointer2,
   Rocket,
   Route,
   Scale,
@@ -28,6 +27,7 @@ import {
   getSectionContent,
 } from '../utils/blueprintSections';
 import { Aurora, Beams } from '../components/reactbits/VisualEffects';
+import ThemeToggle from '../components/ThemeToggle';
 
 const SECTION_ICONS = {
   executive_summary: BadgeCheck,
@@ -44,7 +44,7 @@ const SECTION_ICONS = {
   final_recommendation: Wand2,
 };
 
-export default function BlueprintPage({ chatId }) {
+export default function BlueprintPage({ chatId, theme = 'light', onToggleTheme }) {
   const [sessionDetails, setSessionDetails] = useState(null);
   const [loadState, setLoadState] = useState('loading');
   const [message, setMessage] = useState('');
@@ -137,6 +137,7 @@ export default function BlueprintPage({ chatId }) {
             <Clipboard size={16} />
             Copy
           </button>
+          <ThemeToggle theme={theme} onToggle={onToggleTheme} className="theme-toggle-inline" />
         </div>
       </header>
 

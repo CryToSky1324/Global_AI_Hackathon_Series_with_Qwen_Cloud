@@ -17,7 +17,7 @@ export default function IdeaInput({
   idea,
   setIdea,
   onGenerate,
-  onReset,
+  onClearInput,
   streamActive,
   currentChatId,
   currentPhase,
@@ -101,7 +101,7 @@ export default function IdeaInput({
       </div>
 
       <div className="composer-meta">
-        <button type="button" className="reset-link" onClick={onReset} disabled={streamActive}>
+        <button type="button" className="reset-link" onClick={onClearInput} disabled={streamActive || !idea}>
           <RotateCcw size={14} />
           Clear input
         </button>

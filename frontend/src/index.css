@@ -1257,6 +1257,10 @@ h6 {
   backdrop-filter: blur(22px);
 }
 
+.chat-topbar .theme-toggle-inline {
+  margin-left: auto;
+}
+
 .chat-brand {
   display: flex;
   align-items: center;
@@ -2420,7 +2424,9 @@ h6 {
   display: flex;
   align-items: center;
   justify-content: flex-end;
+  flex-wrap: wrap;
   gap: 0.55rem;
+  min-width: 0;
 }
 
 .blueprint-layout {
@@ -2908,14 +2914,17 @@ h6 {
   }
 
   .workspace-toolbar,
-  .blueprint-topbar,
-  .blueprint-actions {
+  .blueprint-topbar {
     align-items: flex-start;
     flex-direction: column;
   }
 
   .blueprint-topbar {
     display: flex;
+  }
+
+  .blueprint-actions {
+    justify-content: flex-start;
   }
 
   .blueprint-layout {
@@ -5319,11 +5328,11 @@ h6 {
 }
 
 .genesis-app .chat-shell.is-empty .chat-topbar {
-  display: none !important;
+  display: flex !important;
 }
 
-.genesis-app .chat-topbar {
-  display: none !important;
+.genesis-app .chat-shell.has-conversation .chat-topbar {
+  display: flex !important;
 }
 
 .genesis-app .chat-shell.is-empty::before {
@@ -5584,6 +5593,51 @@ h6 {
   backdrop-filter: blur(22px) saturate(160%);
   -webkit-backdrop-filter: blur(22px) saturate(160%);
   transition: transform 160ms ease, background 160ms ease, border-color 160ms ease, color 160ms ease;
+}
+
+.theme-toggle-inline {
+  position: static;
+  top: auto;
+  right: auto;
+  z-index: auto;
+  min-height: 40px;
+  flex: 0 0 auto;
+}
+
+.theme-toggle-track {
+  position: relative;
+  width: 58px;
+  height: 30px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: space-between;
+  flex: 0 0 58px;
+  border-radius: 999px;
+  background: rgba(28, 36, 54, 0.08);
+  padding: 3px 8px;
+}
+
+.theme-toggle-thumb {
+  position: absolute;
+  left: 3px;
+  top: 3px;
+  width: 24px;
+  height: 24px;
+  border-radius: 999px;
+  background: #ffffff;
+  box-shadow: 0 6px 14px rgba(28, 44, 76, 0.18);
+}
+
+.theme-toggle-icon {
+  position: relative;
+  z-index: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.theme-toggle-label {
+  white-space: nowrap;
 }
 
 .theme-toggle:hover {
@@ -6166,19 +6220,27 @@ html[data-theme="dark"] .reset-link {
 }
 
 @media (max-width: 760px) {
-  .theme-toggle {
+  .theme-toggle:not(.theme-toggle-inline) {
     top: 16px;
     right: 16px;
     width: 38px;
     padding: 0;
   }
 
-  .theme-toggle span {
+  .theme-toggle:not(.theme-toggle-inline) > span {
     display: none;
   }
 
-  html[data-theme="dark"] .gcp-nav-inner,
-  html[data-theme="dark"] .blueprint-topbar {
+  .theme-toggle-inline {
+    width: auto;
+    padding: 0 10px;
+  }
+
+  .theme-toggle-inline .theme-toggle-label {
+    display: none;
+  }
+
+  html[data-theme="dark"] .gcp-nav-inner {
     padding-right: 64px;
   }
 

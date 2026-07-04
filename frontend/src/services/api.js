@@ -1,12 +1,11 @@
 const configuredApiBaseUrl = (import.meta.env.VITE_API_BASE_URL || '').replace(/\/$/, '');
+const localApiBaseUrl = '/api';
 
-// 2. Export it directly. No complex DEV checks needed.
-export const API_BASE_URL = configuredApiBaseUrl;
+export const API_BASE_URL = configuredApiBaseUrl || localApiBaseUrl;
 
-export const API_CONNECTION_LABEL = API_BASE_URL || 'Fallback Routing';
-export const API_BACKEND_HINT = configuredApiBaseUrl || 'Relative Path Mode';
+export const API_CONNECTION_LABEL = configuredApiBaseUrl || 'Local Vite proxy (/api)';
+export const API_BACKEND_HINT = configuredApiBaseUrl || 'http://127.0.0.1:8000/api';
 
-// 3. Build the final path
 function apiUrl(path) {
   return `${API_BASE_URL}${path}`;
 }
@@ -80,6 +79,7 @@ export async function streamSimulation({
   clientMessageId,
   runId,
   lastEventId,
+  signal,
   onEvent,
   onError,
   onDone,
@@ -91,6 +91,7 @@ export async function streamSimulation({
       headers: {
         'Content-Type': 'application/json',
       },
+      signal,
       body: JSON.stringify({
         message,
         chat_id: chatId || null,

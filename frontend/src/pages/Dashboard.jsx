@@ -6,6 +6,7 @@ import DebateFeed from '../components/DebateFeed';
 import AgentStatus from '../components/AgentStatus';
 import { BLUEPRINT_SECTIONS, countGeneratedSections, mergeBlueprintSection } from '../utils/blueprintSections';
 import {
+  API_CONNECTION_LABEL,
   API_BACKEND_HINT,
   deleteSession as deleteSessionRequest,
   getSession,
@@ -14,7 +15,7 @@ import {
   listSessions,
   streamSimulation,
 } from '../services/api';
-import { AlertCircle, ArrowLeft, CheckCircle2, FileText, Menu, RefreshCw, Trash2, UsersRound, X } from 'lucide-react';
+import { AlertCircle, ArrowLeft, FileText, Trash2, UsersRound, X } from 'lucide-react';
 import {
   AnimatedContent,
   Aurora,
@@ -214,7 +215,7 @@ export default function Dashboard({ initialChatId = null, theme = 'light', onTog
     } catch (e) {
       setConnectionState('offline');
       setConnectionMessage(
-        `Backend is not reachable. Start it on ${API_BACKEND_HINT} or set VITE_USE_DIRECT_API=true with VITE_API_BASE_URL.`
+        `Backend is not reachable. Start it on ${API_BACKEND_HINT} or set VITE_API_BASE_URL to the backend /api URL.`
       );
       return false;
     }
@@ -316,10 +317,15 @@ export default function Dashboard({ initialChatId = null, theme = 'light', onTog
     setStreamActive(true);
     setCurrentPhase('Initializing');
     setActiveAgent(null);
-    setEvents([
+    const optimisticEvents = [
       { type: 'user_input', agent: 'User', client_message_id: clientMessageId, content: promptMessage, timestamp: Date.now() / 1000 },
       { type: 'info', content: currentChatId ? 'Genesis is refining this startup plan.' : 'Genesis is starting a new startup simulation.', timestamp: Date.now() / 1000 },
-    ]);
+    ];
+    setEvents((prev) => (
+      currentChatId
+        ? dedupeEvents([...prev, ...optimisticEvents])
+        : optimisticEvents
+    ));
     setIdea('');
 
     await streamSimulation({
@@ -524,7 +530,7 @@ export default function Dashboard({ initialChatId = null, theme = 'light', onTog
       <SessionSidebar
         sessions={sessions} currentChatId={currentChatId} onSelectSession={handleSelectSessionFromDrawer}
         onDeleteSession={handleRequestDeleteSession} streamActive={streamActive} isMobileOpen={isSessionDrawerOpen}
-        onClose={() => setIsSessionDrawerOpen(false)}
+        onClose={() => setIsSessionDrawerOpen(false)} onNewChat={handleReset}
       />
       {isSessionDrawerOpen && (
         <button type="button" className="drawer-backdrop" onClick={() => setIsSessionDrawerOpen(false)} aria-label="Close saved sessions drawer" />
@@ -533,13 +539,10 @@ export default function Dashboard({ initialChatId = null, theme = 'light', onTog
       <main className={`chat-shell ${hasConversation ? 'has-conversation' : 'is-empty'}`}>
         <header className="chat-topbar">
           <div className="chat-brand">
-            <button type="button" className="sessions-menu-button" onClick={() => setIsSessionDrawerOpen(true)} aria-label="Open saved sessions" aria-expanded={isSessionDrawerOpen} aria-controls="saved-sessions-sidebar">
-              <Menu size={18} />
-            </button>
             <a href="/" className="back-link cursor-target" aria-label="Back to Genesis landing"><ArrowLeft size={17} /></a>
             <h1>Genesis Studio</h1>
           </div>
-          <ThemeToggle theme={theme} onToggle={onToggleTheme} />
+          <ThemeToggle theme={theme} onToggle={onToggleTheme} className="theme-toggle-inline" />
         </header>
 
         {connectionState !== 'connected' && (
@@ -585,7 +588,17 @@ export default function Dashboard({ initialChatId = null, theme = 'light', onTog
         </section>
 
         <div className="composer-dock">
-          <IdeaInput idea={idea} setIdea={setIdea} onGenerate={handleGenerate} onReset={handleReset} streamActive={streamActive} currentChatId={currentChatId} currentPhase={currentPhase} />
+          <IdeaInput
+            idea={idea}
+            setIdea={setIdea}
+            onGenerate={handleGenerate}
+            onClearInput={() => setIdea('')}
+            streamActive={streamActive}
+            currentChatId={currentChatId}
+            currentPhase={currentPhase}
+            connectionState={connectionState}
+            apiLabel={API_CONNECTION_LABEL}
+          />
         </div>
       </main>
 

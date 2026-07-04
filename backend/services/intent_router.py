@@ -41,7 +41,7 @@ def ai_classify_intent(message: str, has_existing_chat: bool) -> IntentResult:
     """
     try:
         response = client.chat.completions.create(
-            model="qwen-turbo",
+            model="qwen3.5-flash",
             response_format={"type": "json_object"},
             messages=[{"role": "system", "content": system_prompt}, {"role": "user", "content": message}],
             temperature=0.01

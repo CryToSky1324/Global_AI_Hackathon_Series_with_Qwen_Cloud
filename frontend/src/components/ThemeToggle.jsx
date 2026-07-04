@@ -5,7 +5,7 @@ import { useGSAP } from '@gsap/react';
 
 gsap.registerPlugin(useGSAP);
 
-export default function ThemeToggle({ theme, onToggle }) {
+export default function ThemeToggle({ theme, onToggle, className = '' }) {
   const scopeRef = useRef(null);
   const thumbRef = useRef(null);
   const sunRef = useRef(null);
@@ -41,7 +41,7 @@ export default function ThemeToggle({ theme, onToggle }) {
     <button
       ref={scopeRef}
       type="button"
-      className="theme-toggle"
+      className={`theme-toggle ${className}`.trim()}
       onClick={onToggle}
       aria-label={`Switch to ${theme === 'dark' ? 'light' : 'dark'} mode`}
       title={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
